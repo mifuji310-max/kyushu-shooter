@@ -26,12 +26,17 @@ class GameScene extends Phaser.Scene {
 
   update(time, delta) {
     if (this.gameEnded) return;
-    this._scrollBackground();
-    this._movePlayer();
+    this._scrollBackground(delta);
+    this._movePlayer(delta);
     this._updateEnemies(time, delta);
     this._updateBoss(time, delta);
     this._updateUI();
     this._cleanupOffscreen();
+
+    // 保険: 無敵でないのに自機が消えていたら必ず元に戻す
+    if (this.player && this.player.active && !this.invincible && !this.player.visible) {
+      this.player.setVisible(true).clearTint().setAlpha(1);
+    }
   }
 
   // ─── TEXTURE GENERATION ────────────────────────────────
@@ -313,8 +318,10 @@ class GameScene extends Phaser.Scene {
     div.lineStyle(1, 0x334488, 0.8).lineBetween(0, PLAY_H, GW, PLAY_H);
   }
 
-  _scrollBackground() {
-    const speed = 2.5;
+  _scrollBackground(delta) {
+    // FPSに依存しないよう時間ベースで進める（タッチ時の速度急変を防ぐ）
+    const f = Math.min(delta, 50) / 16.667;
+    const speed = 2.5 * f;
     // 道路ダッシュ
     for (const d of this._roadDashes) {
       d.y += speed * 2;
@@ -657,12 +664,12 @@ class GameScene extends Phaser.Scene {
 
   // ─── UPDATE HELPERS ────────────────────────────────────
 
-  _movePlayer() {
-    const speed = 320;
+  _movePlayer(delta) {
+    const step = 320 * (Math.min(delta, 50) / 1000);
     if (this._cursors.left.isDown) {
-      this.player.x = Math.max(30, this.player.x - speed * (1 / 60));
+      this.player.x = Math.max(30, this.player.x - step);
     } else if (this._cursors.right.isDown) {
-      this.player.x = Math.min(GW - 30, this.player.x + speed * (1 / 60));
+      this.player.x = Math.min(GW - 30, this.player.x + step);
     }
     this.player.x = Phaser.Math.Clamp(this.player.x, 30, GW - 30);
   }
@@ -812,23 +819,35 @@ class GameScene extends Phaser.Scene {
     this.playerHP = Math.max(0, this.playerHP - amount);
     this.cameras.main.shake(150, 0.008);
 
-    // alphaは一切変えない。赤Tintで点滅 + ネイティブsetIntervalで制御
-    if (this._flashInterval) clearInterval(this._flashInterval);
+    // 無敵中の点滅は setVisible のトグルのみ。
+    // tint/alpha は端末GPUによっては自機が消えたまま戻らないため一切使わない。
+    if (this._flashEvent) this._flashEvent.remove();
     let tick = 0;
-    this._flashInterval = setInterval(() => {
-      tick++;
-      if (!this.player) { clearInterval(this._flashInterval); return; }
-      this.player.setTint(tick % 2 === 0 ? 0xffffff : 0xff6666);
-      if (tick >= 14) {
-        clearInterval(this._flashInterval);
-        this.player.clearTint();
-        this.invincible = false;
-      }
-    }, 100);
+    this._flashEvent = this.time.addEvent({
+      delay: 100,
+      repeat: 11,
+      callback: () => {
+        tick++;
+        if (this.player && this.player.active) {
+          this.player.setVisible(tick % 2 === 1);
+        }
+      },
+    });
+
+    // 点滅処理が何で失敗しても必ず元に戻す保険
+    this.time.delayedCall(1300, () => this._endInvincible());
 
     if (this.playerHP <= 0) {
-      setTimeout(() => { if (!this.gameEnded) this._gameOver(false); }, 500);
+      this.time.delayedCall(500, () => { if (!this.gameEnded) this._gameOver(false); });
     }
+  }
+
+  _endInvincible() {
+    if (this._flashEvent) { this._flashEvent.remove(); this._flashEvent = null; }
+    if (this.player && this.player.active) {
+      this.player.setVisible(true).clearTint().setAlpha(1);
+    }
+    this.invincible = false;
   }
 
   _addScore(amount) {
