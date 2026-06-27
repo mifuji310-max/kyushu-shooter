@@ -792,20 +792,26 @@ class GameScene extends Phaser.Scene {
     if (boss.bossHP <= 0) this._bossDefeated();
   }
 
-  _onEnemyBulletHitPlayer(bullet, player) {
-    if (this.invincible) return;
+  // 注意: Phaserは overlap(グループ, スプライト) のとき callback(スプライト, 要素)
+  // と引数を入れ替えて渡す。引数名に頼ると自機を destroy してしまうため、
+  // 必ず「this.player でない方」を相手として判定する。
+  _onEnemyBulletHitPlayer(a, b) {
+    if (this.invincible || this.gameEnded) return;
+    const bullet = (a === this.player) ? b : a;
     bullet.destroy();
     this._damagePlayer(10);
   }
 
-  _onEnemyHitPlayer(enemy, player) {
-    if (this.invincible) return;
+  _onEnemyHitPlayer(a, b) {
+    if (this.invincible || this.gameEnded) return;
+    const enemy = (a === this.player) ? b : a;
     this._explode(enemy.x, enemy.y);
     if (enemy !== this.boss) enemy.destroy();
     this._damagePlayer(20);
   }
 
-  _onPlayerGetItem(player, item) {
+  _onPlayerGetItem(a, b) {
+    const item = (a === this.player) ? b : a;
     if (item.itemType === 'item_power') {
       this.powerLevel = Math.min(3, this.powerLevel + 1);
       this._showPickupMsg('パワーアップ！ Lv.' + this.powerLevel, '#ffcc00');
