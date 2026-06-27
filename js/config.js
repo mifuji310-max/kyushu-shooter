@@ -4,7 +4,7 @@ const GH = 700;
 const CONTROL_H = 180; // 下部タッチ操作エリアの高さ
 const PLAY_H = GH - CONTROL_H;
 
-const VERSION = 'v0.1.4';
+const VERSION = 'v0.2.0';
 
 // カラーパレット
 const C = {
@@ -83,5 +83,43 @@ const ENEMY_CFG = {
   uma:      { hp: 3,  score: 250, w: 34, h: 46, speed: 290, label: '馬' },
 };
 
-const BOSS_MAX_HP = 200;
-const PLAYER_MAX_HP = 100;
+const BOSS_MAX_HP = 200;   // NORMAL基準（難易度で上書き）
+const PLAYER_MAX_HP = 100;  // NORMAL基準（難易度で上書き）
+
+// 難易度設定
+// dmgMul: 被ダメージ倍率 / healDrop: 回復ドロップ率 / powerDrop: 強化ドロップ率
+// enemyHpMul: 敵HP倍率 / enemySpeedMul: 敵速度倍率 / shootIntervalMul: 敵発射間隔倍率(小=高頻度)
+const DIFFICULTY = {
+  EASY: {
+    key: 'EASY', label: 'EASY', color: '#5fd35f', desc: 'のんびり練習。回復多め',
+    playerHP: 120, healAmount: 35, dmgMul: 0.6,
+    healDrop: 0.12, powerDrop: 0.16, bossHP: 140,
+    enemyHpMul: 0.8, enemySpeedMul: 0.85, shootIntervalMul: 1.35,
+  },
+  NORMAL: {
+    key: 'NORMAL', label: 'NORMAL', color: '#4fb0ff', desc: '標準的なバランス',
+    playerHP: 100, healAmount: 25, dmgMul: 1.0,
+    healDrop: 0.05, powerDrop: 0.11, bossHP: 200,
+    enemyHpMul: 1.0, enemySpeedMul: 1.0, shootIntervalMul: 1.0,
+  },
+  HARD: {
+    key: 'HARD', label: 'HARD', color: '#ff9d3a', desc: '歯ごたえあり。回復少なめ',
+    playerHP: 80, healAmount: 18, dmgMul: 1.4,
+    healDrop: 0.03, powerDrop: 0.09, bossHP: 280,
+    enemyHpMul: 1.2, enemySpeedMul: 1.15, shootIntervalMul: 0.8,
+  },
+  EXTREME: {
+    key: 'EXTREME', label: 'EXTREME', color: '#ff4466', desc: '死を覚悟せよ',
+    playerHP: 60, healAmount: 12, dmgMul: 1.8,
+    healDrop: 0.018, powerDrop: 0.07, bossHP: 380,
+    enemyHpMul: 1.5, enemySpeedMul: 1.3, shootIntervalMul: 0.62,
+  },
+};
+const DIFFICULTY_ORDER = ['EASY', 'NORMAL', 'HARD', 'EXTREME'];
+
+// 武器タイプ（fire: 発射間隔ms）
+const WEAPON = {
+  normal: { label: '通常', color: '#ffeb3b', fire: 110 },
+  spread: { label: '拡散', color: '#ff9800', fire: 150 },
+  big:    { label: '大玉', color: '#ff4081', fire: 280 },
+};

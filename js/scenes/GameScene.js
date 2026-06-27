@@ -3,15 +3,27 @@ class GameScene extends Phaser.Scene {
 
   // ─── LIFECYCLE ─────────────────────────────────────────
 
+  init(data) {
+    const key = (data && data.difficulty) || this.registry.get('difficulty') || 'NORMAL';
+    this.diffKey = DIFFICULTY[key] ? key : 'NORMAL';
+    this.diff = DIFFICULTY[this.diffKey];
+    this.registry.set('difficulty', this.diffKey); // リトライ時に引き継ぐ
+  }
+
   create() {
     this.score      = 0;
     this.stageTime  = 0;
     this.bossActive = false;
     this.bossDefeated = false;
-    this.playerHP   = PLAYER_MAX_HP;
+    this.playerMaxHP = this.diff.playerHP;
+    this.bossMaxHP   = this.diff.bossHP;
+    this.playerHP   = this.playerMaxHP;
     this.invincible = false;
     this.gameEnded  = false;
+    this.weapon     = 'normal';
     this.powerLevel = 1;   // 1〜3
+    this.shieldHits = 0;
+    this._nextFireAt = 0;
     this.waveTimers = {};
 
     this._makeTextures();
@@ -22,6 +34,14 @@ class GameScene extends Phaser.Scene {
     this._setupTouch();
     this._setupColliders();
     this._setupTimers();
+
+    // 難易度バナー
+    const dt = this.add.text(GW / 2, PLAY_H / 2 - 40, this.diff.label, {
+      fontSize: '32px', fontFamily: 'sans-serif',
+      color: this.diff.color, stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(40);
+    this.tweens.add({ targets: dt, alpha: 0, delay: 900, duration: 500,
+      onComplete: () => dt.destroy() });
   }
 
   update(time, delta) {
@@ -38,6 +58,12 @@ class GameScene extends Phaser.Scene {
     if (this.player && this.player.active &&
         (!this.player.visible || this.player.alpha < 1)) {
       this.player.setVisible(true).clearTint().setAlpha(1);
+    }
+
+    // バリアを自機に追従させる
+    if (this._shieldSprite && this._shieldSprite.visible) {
+      this._shieldSprite.x = this.player.x;
+      this._shieldSprite.y = this.player.y;
     }
   }
 
@@ -57,6 +83,61 @@ class GameScene extends Phaser.Scene {
     this._texExplosion();
     this._texIkinaridango();
     this._texTennensui();
+    this._texBigBullet();
+    this._texShield();
+    this._texSpreadItem();
+    this._texBigItem();
+    this._texBarrierItem();
+  }
+
+  _texBigBullet() {
+    this._gTex('bullet_big', 20, 24, g => {
+      g.fillStyle(0xff4081, 0.85).fillCircle(10, 12, 9);
+      g.fillStyle(0xffab00, 0.9).fillCircle(10, 12, 5.5);
+      g.fillStyle(0xffffff, 0.95).fillCircle(8, 9, 2.5);
+    });
+  }
+
+  _texShield() {
+    this._gTex('shield', 84, 84, g => {
+      g.lineStyle(4, 0x33e0ff, 0.85).strokeCircle(42, 42, 36);
+      g.lineStyle(2, 0xffffff, 0.55).strokeCircle(42, 42, 31);
+      g.lineStyle(2, 0x33e0ff, 0.4).strokeCircle(42, 42, 40);
+    });
+  }
+
+  // 拡散ショット
+  _texSpreadItem() {
+    this._gTex('item_spread', 28, 28, g => {
+      g.fillStyle(0xe65100).fillCircle(14, 14, 12);
+      g.lineStyle(2, 0xfff3e0).strokeCircle(14, 14, 12);
+      g.lineStyle(2, 0xffffff);
+      g.lineBetween(14, 19, 8, 8);
+      g.lineBetween(14, 19, 14, 6);
+      g.lineBetween(14, 19, 20, 8);
+    });
+  }
+
+  // 大玉ショット
+  _texBigItem() {
+    this._gTex('item_big', 28, 28, g => {
+      g.fillStyle(0xad1457).fillCircle(14, 14, 12);
+      g.lineStyle(2, 0xfce4ec).strokeCircle(14, 14, 12);
+      g.fillStyle(0xff80ab).fillCircle(14, 14, 6.5);
+      g.fillStyle(0xffffff, 0.85).fillCircle(11.5, 11.5, 2.2);
+    });
+  }
+
+  // バリア
+  _texBarrierItem() {
+    this._gTex('item_barrier', 28, 28, g => {
+      g.fillStyle(0x006064).fillCircle(14, 14, 12);
+      g.lineStyle(2, 0xb2ebf2).strokeCircle(14, 14, 12);
+      g.fillStyle(0x33e0ff);
+      g.fillRoundedRect(9, 7, 10, 9, 2);
+      g.fillTriangle(9, 15, 19, 15, 14, 22);
+      g.fillStyle(0xffffff, 0.7).fillRect(13, 9, 2, 9);
+    });
   }
 
   _gTex(key, w, h, fn) {
@@ -450,7 +531,7 @@ class GameScene extends Phaser.Scene {
       delay: 1000, callback: this._onSecondTick, callbackScope: this, loop: true,
     });
     this.time.addEvent({
-      delay: 110, callback: this._playerFire, callbackScope: this, loop: true,
+      delay: 30, callback: this._playerFire, callbackScope: this, loop: true,
     });
   }
 
@@ -490,38 +571,40 @@ class GameScene extends Phaser.Scene {
     const e = this.enemies.create(x, y, 'enemy_' + type);
     e.setDepth(8);
     e.enemyType = type;
-    e.hp = cfg.hp;
+    e.hp = Math.max(1, Math.round(cfg.hp * this.diff.enemyHpMul));
     e.score = cfg.score;
     e.elapsed = 0;
     e.lastShot = 0;
     e.baseX = x;
     e.body.setSize(cfg.w * 0.8, cfg.h * 0.8);
 
+    const sp = cfg.speed * this.diff.enemySpeedMul; // 難易度で速度補正
+
     switch (type) {
       case 'renkon':
-        e.setVelocityY(cfg.speed);
+        e.setVelocityY(sp);
         e.moveType = 'zigzag';
         break;
       case 'jintaiko':
-        e.setVelocity(Phaser.Math.Between(-50, 50), cfg.speed);
+        e.setVelocity(Phaser.Math.Between(-50, 50), sp);
         e.moveType = 'wiggle';
         break;
       case 'kingyo':
-        e.setVelocityY(cfg.speed);
+        e.setVelocityY(sp);
         e.moveType = 'sine';
         break;
       case 'chip':
-        e.setVelocityY(cfg.speed);
+        e.setVelocityY(sp);
         e.moveType = 'straight';
         break;
       case 'kyoryu':
-        e.setVelocity(cfg.speed * (Math.random() > 0.5 ? 1 : -1), 55);
+        e.setVelocity(sp * (Math.random() > 0.5 ? 1 : -1), 55);
         e.moveType = 'bounce';
         break;
       case 'uma': {
         const dx = this.player.x - x;
-        const len = Math.sqrt(dx * dx + cfg.speed * cfg.speed);
-        e.setVelocity((dx / len) * cfg.speed * 0.25, cfg.speed);
+        const len = Math.sqrt(dx * dx + sp * sp);
+        e.setVelocity((dx / len) * sp * 0.25, sp);
         e.moveType = 'charge';
         break;
       }
@@ -545,7 +628,7 @@ class GameScene extends Phaser.Scene {
 
     this.boss = this.physics.add.sprite(GW / 2, -70, 'boss');
     this.boss.setDepth(9);
-    this.boss.bossHP = BOSS_MAX_HP;
+    this.boss.bossHP = this.bossMaxHP;
     this.boss.phase = 1;
     this.boss.elapsed = 0;
     this.boss.lastShot = 0;
@@ -567,7 +650,7 @@ class GameScene extends Phaser.Scene {
     const b = this.boss;
     b.elapsed += delta;
 
-    const hpRatio = b.bossHP / BOSS_MAX_HP;
+    const hpRatio = b.bossHP / this.bossMaxHP;
     if (hpRatio <= 0.5 && b.phase === 1) {
       b.phase = 2;
       this._bossPhaseBanner('フェーズ2');
@@ -582,7 +665,7 @@ class GameScene extends Phaser.Scene {
     b.x = GW / 2 + Math.sin(b.elapsed / 1000 * freq) * amp;
     b.y = b.phase < 3 ? 100 : 90 + Math.sin(b.elapsed / 700) * 20;
 
-    const shootInterval = b.phase === 1 ? 2200 : b.phase === 2 ? 1600 : 1100;
+    const shootInterval = (b.phase === 1 ? 2200 : b.phase === 2 ? 1600 : 1100) * this.diff.shootIntervalMul;
     if (time - b.lastShot > shootInterval) {
       b.lastShot = time;
       this._bossShoot(b.phase);
@@ -649,10 +732,13 @@ class GameScene extends Phaser.Scene {
 
   _tryDropItem(x, y) {
     const r = Math.random();
-    if (r < 0.10) {
+    const d = this.diff;
+    if (r < d.healDrop) {
       this._spawnItem('item_heal', x, y);
-    } else if (r < 0.18) {
-      this._spawnItem('item_power', x, y);
+    } else if (r < d.healDrop + d.powerDrop) {
+      // 強化系をランダム抽選（団子=強化を出やすめに）
+      const pool = ['item_power', 'item_power', 'item_spread', 'item_big', 'item_barrier'];
+      this._spawnItem(Phaser.Utils.Array.GetRandom(pool), x, y);
     }
   }
 
@@ -683,26 +769,63 @@ class GameScene extends Phaser.Scene {
 
   _playerFire() {
     if (this.gameEnded) return;
+    const now = this.time.now;
+    if (now < this._nextFireAt) return;
+    this._nextFireAt = now + WEAPON[this.weapon].fire;
+
     const cx = this.player.x;
     const cy = this.player.y - 30;
+    const lv = this.powerLevel;
 
-    if (this.powerLevel === 1) {
-      this._spawnBullet(cx, cy, 0);
-    } else if (this.powerLevel === 2) {
-      this._spawnBullet(cx - 11, cy, -25);
-      this._spawnBullet(cx + 11, cy,  25);
-    } else {
-      this._spawnBullet(cx - 18, cy, -40);
-      this._spawnBullet(cx,      cy,   0);
-      this._spawnBullet(cx + 18, cy,  40);
+    if (this.weapon === 'normal') {
+      if (lv === 1) {
+        this._spawnBullet(cx, cy, 0);
+      } else if (lv === 2) {
+        this._spawnBullet(cx - 11, cy, -25);
+        this._spawnBullet(cx + 11, cy,  25);
+      } else {
+        this._spawnBullet(cx - 18, cy, -40);
+        this._spawnBullet(cx,      cy,   0);
+        this._spawnBullet(cx + 18, cy,  40);
+      }
+    } else if (this.weapon === 'spread') {
+      const ways = lv + 2;               // 3 / 4 / 5 way
+      const span = 0.5;                  // 片側の最大角(rad)
+      for (let i = 0; i < ways; i++) {
+        const t = ways === 1 ? 0 : (i / (ways - 1) - 0.5) * 2; // -1〜1
+        const ang = -Math.PI / 2 + t * span;
+        this._spawnBullet(cx, cy, Math.cos(ang) * 560, Math.sin(ang) * 560);
+      }
+    } else { // big（貫通大玉）
+      if (lv === 1) {
+        this._spawnBigBullet(cx, cy, 0);
+      } else if (lv === 2) {
+        this._spawnBigBullet(cx - 14, cy, 0);
+        this._spawnBigBullet(cx + 14, cy, 0);
+      } else {
+        this._spawnBigBullet(cx - 20, cy, 0);
+        this._spawnBigBullet(cx,      cy, 0);
+        this._spawnBigBullet(cx + 20, cy, 0);
+      }
     }
   }
 
-  _spawnBullet(x, y, vx) {
+  _spawnBullet(x, y, vx, vy) {
     const b = this.playerBullets.create(x, y, 'bullet');
     b.setDepth(6);
-    b.setVelocity(vx, -620);
+    b.setVelocity(vx, vy === undefined ? -620 : vy);
     b.body.setSize(4, 14);
+    b.damage = 1;
+    b.pierceLeft = 0;
+  }
+
+  _spawnBigBullet(x, y, vx) {
+    const b = this.playerBullets.create(x, y, 'bullet_big');
+    b.setDepth(6);
+    b.setVelocity(vx, -520);
+    b.body.setSize(14, 18);
+    b.damage = 2;
+    b.pierceLeft = 2;   // 2体まで貫通
   }
 
   _updateEnemies(time, delta) {
@@ -719,14 +842,14 @@ class GameScene extends Phaser.Scene {
         case 'bounce':
           if (e.x < 20)       { e.setVelocityX( Math.abs(e.body.velocity.x)); }
           else if (e.x > GW - 20) { e.setVelocityX(-Math.abs(e.body.velocity.x)); }
-          if (time - e.lastShot > ENEMY_CFG.kyoryu.shootInterval) {
+          if (time - e.lastShot > ENEMY_CFG.kyoryu.shootInterval * this.diff.shootIntervalMul) {
             e.lastShot = time;
             const a = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
             this._spawnEnemyBullet(e.x, e.y + 16, Math.cos(a) * 200, Math.sin(a) * 200);
           }
           break;
         case 'wiggle':
-          if (time - e.lastShot > ENEMY_CFG.jintaiko.shootInterval) {
+          if (time - e.lastShot > ENEMY_CFG.jintaiko.shootInterval * this.diff.shootIntervalMul) {
             e.lastShot = time;
             const a = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
             this._spawnEnemyBullet(e.x, e.y + 14, Math.cos(a) * 190, Math.sin(a) * 190);
@@ -743,18 +866,19 @@ class GameScene extends Phaser.Scene {
     this._timerText.setText(this.bossActive ? 'BOSS!' : String(remain));
     if (remain <= 10 && !this.bossActive) this._timerText.setColor('#ff4444');
 
-    const hpRatio = this.playerHP / PLAYER_MAX_HP;
+    const hpRatio = Phaser.Math.Clamp(this.playerHP / this.playerMaxHP, 0, 1);
     this._hpBar.width = 110 * hpRatio;
     this._hpBar.setFillStyle(
       hpRatio > 0.5 ? C.HP_GREEN : hpRatio > 0.25 ? C.HP_YELLOW : C.HP_RED
     );
 
-    this._powerText.setText('Lv.' + this.powerLevel);
-    const pvColors = ['#aaaaaa', '#ffcc00', '#ff6600'];
-    this._powerText.setColor(pvColors[this.powerLevel - 1]);
+    const w = WEAPON[this.weapon];
+    let pt = w.label + ' Lv.' + this.powerLevel;
+    if (this.shieldHits > 0) pt += '  🛡' + this.shieldHits;
+    this._powerText.setText(pt).setColor(w.color);
 
     if (this.bossActive && this.boss && this.boss.active) {
-      const bRatio = this.boss.bossHP / BOSS_MAX_HP;
+      const bRatio = Phaser.Math.Clamp(this.boss.bossHP / this.bossMaxHP, 0, 1);
       this._bossHpBar.width = (GW - 40) * bRatio;
     }
   }
@@ -774,9 +898,18 @@ class GameScene extends Phaser.Scene {
   // ─── COLLISION HANDLERS ────────────────────────────────
 
   _onBulletHitEnemy(bullet, enemy) {
-    bullet.destroy();
-    enemy.hp--;
+    // 貫通弾が同じ敵を毎フレーム多重ヒットしないようガード
+    if (bullet._hit && bullet._hit.has(enemy)) return;
+    enemy.hp -= (bullet.damage || 1);
     this._flashWhite(enemy);
+
+    if (bullet.pierceLeft && bullet.pierceLeft > 0) {
+      bullet.pierceLeft--;
+      (bullet._hit || (bullet._hit = new Set())).add(enemy);
+    } else {
+      bullet.destroy();
+    }
+
     if (enemy.hp <= 0) {
       this._addScore(enemy.score);
       this._explode(enemy.x, enemy.y);
@@ -786,9 +919,9 @@ class GameScene extends Phaser.Scene {
   }
 
   _onBulletHitBoss(bullet, boss) {
-    bullet.destroy();
-    boss.bossHP--;
+    boss.bossHP -= (bullet.damage || 1);
     this._flashWhite(boss);
+    bullet.destroy(); // 単体ボスでは貫通させず必ず消す（多重ヒット防止）
     if (boss.bossHP <= 0) this._bossDefeated();
   }
 
@@ -799,7 +932,7 @@ class GameScene extends Phaser.Scene {
     if (this.invincible || this.gameEnded) return;
     const bullet = (a === this.player) ? b : a;
     bullet.destroy();
-    this._damagePlayer(10);
+    this._damagePlayer(Math.round(10 * this.diff.dmgMul));
   }
 
   _onEnemyHitPlayer(a, b) {
@@ -807,28 +940,64 @@ class GameScene extends Phaser.Scene {
     const enemy = (a === this.player) ? b : a;
     this._explode(enemy.x, enemy.y);
     if (enemy !== this.boss) enemy.destroy();
-    this._damagePlayer(20);
+    this._damagePlayer(Math.round(20 * this.diff.dmgMul));
   }
 
   _onPlayerGetItem(a, b) {
     const item = (a === this.player) ? b : a;
-    if (item.itemType === 'item_power') {
-      this.powerLevel = Math.min(3, this.powerLevel + 1);
-      this._showPickupMsg('パワーアップ！ Lv.' + this.powerLevel, '#ffcc00');
-    } else if (item.itemType === 'item_heal') {
-      const healed = Math.min(30, PLAYER_MAX_HP - this.playerHP);
-      this.playerHP = Math.min(PLAYER_MAX_HP, this.playerHP + 30);
-      this._showPickupMsg('+' + healed + ' HP 回復！', '#66ff66');
+    switch (item.itemType) {
+      case 'item_power':
+        this.powerLevel = Math.min(3, this.powerLevel + 1);
+        this._showPickupMsg('パワーアップ Lv.' + this.powerLevel, '#ffcc00');
+        break;
+      case 'item_spread':
+        this.weapon = 'spread';
+        this._showPickupMsg('拡散ショット！', '#ff9800');
+        break;
+      case 'item_big':
+        this.weapon = 'big';
+        this._showPickupMsg('大玉ショット！', '#ff80ab');
+        break;
+      case 'item_barrier':
+        this.shieldHits = 3;
+        this._setShield(true);
+        this._showPickupMsg('バリア展開！', '#33e0ff');
+        break;
+      case 'item_heal': {
+        const amt = this.diff.healAmount;
+        const healed = Math.min(amt, this.playerMaxHP - this.playerHP);
+        this.playerHP = Math.min(this.playerMaxHP, this.playerHP + amt);
+        this._showPickupMsg('+' + healed + ' HP', '#66ff66');
+        break;
+      }
     }
     item.destroy();
+  }
+
+  _setShield(on) {
+    if (!this._shieldSprite) {
+      this._shieldSprite = this.add.sprite(this.player.x, this.player.y, 'shield')
+        .setDepth(11).setVisible(false);
+    }
+    this._shieldSprite.setVisible(on);
   }
 
   // ─── DAMAGE / SCORE / EFFECTS ──────────────────────────
 
   _damagePlayer(amount) {
     if (this.invincible || this.gameEnded) return;
-    this.invincible = true;
 
+    // バリアがあれば1ヒット肩代わり（HPは減らない）
+    if (this.shieldHits > 0) {
+      this.shieldHits--;
+      this.cameras.main.flash(90, 0, 150, 255); // 青フラッシュ
+      this.invincible = true;
+      if (this.shieldHits <= 0) this._setShield(false);
+      this.time.delayedCall(500, () => { this.invincible = false; });
+      return;
+    }
+
+    this.invincible = true;
     this.playerHP = Math.max(0, this.playerHP - amount);
 
     // ダメージ表現は画面側のみで行い、自機スプライトには一切触れない。
@@ -920,7 +1089,7 @@ class GameScene extends Phaser.Scene {
 
   _saveScore(score) {
     const scores = JSON.parse(localStorage.getItem('kyushu_scores') || '[]');
-    scores.push({ score, version: VERSION, date: new Date().toISOString() });
+    scores.push({ score, version: VERSION, difficulty: this.diffKey, date: new Date().toISOString() });
     scores.sort((a, b) => b.score - a.score);
     localStorage.setItem('kyushu_scores', JSON.stringify(scores.slice(0, 100)));
   }

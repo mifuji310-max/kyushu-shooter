@@ -97,13 +97,21 @@ class LeaderboardScene extends Phaser.Scene {
         color: isHi ? '#ffcc00' : '#ffffff',
       }).setOrigin(1, 0);
 
-      // 日付・バージョン
+      // 日付・難易度・バージョン
       const date = entry.date
         ? new Date(entry.date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })
         : '';
+      const diff = entry.difficulty ? entry.difficulty + ' ' : '';
+      const diffColor = entry.difficulty && DIFFICULTY[entry.difficulty]
+        ? DIFFICULTY[entry.difficulty].color : '#555577';
       this.add.text(62, y + 28, `${date}  ${entry.version || ''}`, {
         fontSize: '11px', fontFamily: 'sans-serif', color: '#555577',
       });
+      if (diff) {
+        this.add.text(GW - 18, y + 30, diff.trim(), {
+          fontSize: '11px', fontFamily: 'sans-serif', color: diffColor,
+        }).setOrigin(1, 0);
+      }
     });
   }
 }
