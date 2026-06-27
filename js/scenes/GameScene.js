@@ -812,25 +812,22 @@ class GameScene extends Phaser.Scene {
     this.playerHP = Math.max(0, this.playerHP - amount);
     this.cameras.main.shake(150, 0.008);
 
-    // tweenのonComplete問題を回避 → time.addEventで明示的に点滅制御
-    if (this._flashTimer) this._flashTimer.remove();
+    // alphaは一切変えない。赤Tintで点滅 + ネイティブsetIntervalで制御
+    if (this._flashInterval) clearInterval(this._flashInterval);
     let tick = 0;
-    this._flashTimer = this.time.addEvent({
-      delay: 90,
-      repeat: 15,
-      callback: () => {
-        tick++;
-        if (!this.player || !this.player.scene) return;
-        this.player.setAlpha(tick % 2 === 0 ? 1 : 0.15);
-        if (tick >= 16) {
-          this.player.setAlpha(1);
-          this.invincible = false;
-        }
-      },
-    });
+    this._flashInterval = setInterval(() => {
+      tick++;
+      if (!this.player) { clearInterval(this._flashInterval); return; }
+      this.player.setTint(tick % 2 === 0 ? 0xffffff : 0xff6666);
+      if (tick >= 14) {
+        clearInterval(this._flashInterval);
+        this.player.clearTint();
+        this.invincible = false;
+      }
+    }, 100);
 
     if (this.playerHP <= 0) {
-      this.time.delayedCall(500, () => this._gameOver(false));
+      setTimeout(() => { if (!this.gameEnded) this._gameOver(false); }, 500);
     }
   }
 
