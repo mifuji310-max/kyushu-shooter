@@ -4,7 +4,7 @@ const GH = 700;
 const CONTROL_H = 180; // 下部タッチ操作エリアの高さ
 const PLAY_H = GH - CONTROL_H;
 
-const VERSION = 'v0.1.0';
+const VERSION = 'v0.1.1';
 
 // カラーパレット
 const C = {
