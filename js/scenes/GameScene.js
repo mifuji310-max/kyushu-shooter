@@ -33,8 +33,10 @@ class GameScene extends Phaser.Scene {
     this._updateUI();
     this._cleanupOffscreen();
 
-    // 保険: 無敵でないのに自機が消えていたら必ず元に戻す
-    if (this.player && this.player.active && !this.invincible && !this.player.visible) {
+    // 最終防衛線: 自機は決して隠さない方針なので、もし何かで消えていたら
+    // 毎フレーム無条件に復活させる（端末GPU依存の消失事故を物理的に不可能にする）
+    if (this.player && this.player.active &&
+        (!this.player.visible || this.player.alpha < 1)) {
       this.player.setVisible(true).clearTint().setAlpha(1);
     }
   }
@@ -301,11 +303,15 @@ class GameScene extends Phaser.Scene {
     this.add.rectangle(GW / 2 + 65, PLAY_H / 2, 6, PLAY_H, 0x8a8878).setDepth(2);
 
     // 道路中央ライン（スクロール）
+    // 弾(黄色・短い丸帯)と紛れないよう、長く・細く・薄い灰白色のレーン標示にする
     this._roadDashes = [];
-    const dashSpacing = 60;
-    for (let i = 0; i < Math.ceil(PLAY_H / dashSpacing) + 2; i++) {
-      const dash = this.add.rectangle(GW / 2, i * dashSpacing, 4, 28, 0xffffff, 0.6).setDepth(3);
-      this._roadDashes.push({ obj: dash, y: i * dashSpacing });
+    const dashSpacing = 90;
+    const dashCount = Math.ceil((PLAY_H + 180) / dashSpacing);
+    this._roadLoopH = dashCount * dashSpacing;
+    for (let i = 0; i < dashCount; i++) {
+      const y = i * dashSpacing - 90;
+      const dash = this.add.rectangle(GW / 2, y, 5, 46, 0xb0ad95, 0.32).setDepth(3);
+      this._roadDashes.push({ obj: dash, y });
     }
 
     // 操作エリア背景
@@ -319,13 +325,14 @@ class GameScene extends Phaser.Scene {
   }
 
   _scrollBackground(delta) {
-    // FPSに依存しないよう時間ベースで進める（タッチ時の速度急変を防ぐ）
-    const f = Math.min(delta, 50) / 16.667;
+    // FPSに依存しないよう時間ベースで進める（タッチ操作時の速度急変を防ぐ）
+    // capを34ms(≒2フレーム)に絞り、指を離した瞬間のカクつきによる速度スパイクを抑える
+    const f = Math.min(delta, 34) / 16.667;
     const speed = 2.5 * f;
-    // 道路ダッシュ
+    // 道路ダッシュ（均等間隔を保ってループ）
     for (const d of this._roadDashes) {
       d.y += speed * 2;
-      if (d.y > PLAY_H + 30) d.y -= PLAY_H + 60;
+      if (d.y > this._roadLoopH - 90) d.y -= this._roadLoopH;
       d.obj.y = d.y;
     }
     // 田んぼ畦
@@ -665,7 +672,7 @@ class GameScene extends Phaser.Scene {
   // ─── UPDATE HELPERS ────────────────────────────────────
 
   _movePlayer(delta) {
-    const step = 320 * (Math.min(delta, 50) / 1000);
+    const step = 320 * (Math.min(delta, 34) / 1000);
     if (this._cursors.left.isDown) {
       this.player.x = Math.max(30, this.player.x - step);
     } else if (this._cursors.right.isDown) {
@@ -817,37 +824,19 @@ class GameScene extends Phaser.Scene {
     this.invincible = true;
 
     this.playerHP = Math.max(0, this.playerHP - amount);
-    this.cameras.main.shake(150, 0.008);
 
-    // 無敵中の点滅は setVisible のトグルのみ。
-    // tint/alpha は端末GPUによっては自機が消えたまま戻らないため一切使わない。
-    if (this._flashEvent) this._flashEvent.remove();
-    let tick = 0;
-    this._flashEvent = this.time.addEvent({
-      delay: 100,
-      repeat: 11,
-      callback: () => {
-        tick++;
-        if (this.player && this.player.active) {
-          this.player.setVisible(tick % 2 === 1);
-        }
-      },
-    });
+    // ダメージ表現は画面側のみで行い、自機スプライトには一切触れない。
+    // （visible/alpha/tint を触ると端末GPUによっては自機が消えて戻らないため）
+    this.cameras.main.shake(180, 0.009);
+    this.cameras.main.flash(160, 150, 0, 0); // 画面を一瞬赤く
 
-    // 点滅処理が何で失敗しても必ず元に戻す保険
-    this.time.delayedCall(1300, () => this._endInvincible());
+    // 無敵時間（1.2秒）。終了処理はフラグを戻すだけ。
+    if (this._invTimer) this._invTimer.remove();
+    this._invTimer = this.time.delayedCall(1200, () => { this.invincible = false; });
 
     if (this.playerHP <= 0) {
       this.time.delayedCall(500, () => { if (!this.gameEnded) this._gameOver(false); });
     }
-  }
-
-  _endInvincible() {
-    if (this._flashEvent) { this._flashEvent.remove(); this._flashEvent = null; }
-    if (this.player && this.player.active) {
-      this.player.setVisible(true).clearTint().setAlpha(1);
-    }
-    this.invincible = false;
   }
 
   _addScore(amount) {
