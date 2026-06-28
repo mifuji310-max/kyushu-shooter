@@ -5,7 +5,10 @@
 
 ## 技術構成
 - **Phaser.js 3.70.0**（CDN読み込み）+ Arcade Physics
-- スプライトは画像ファイルではなく `Graphics.generateTexture()` で図形から動的生成
+- 自機・敵・弾は `Graphics.generateTexture()` で図形から動的生成
+- 画像アセットは `img/` に配置し各シーンの `preload()` で読込
+  - タイトルロゴ `title_logo`（黒背景はSCREEN合成で透過して星空に重ねる）
+  - 背景 `bg_kumamoto`（空撮写真。`TileSprite`で縦スクロール、`tilePositionY`を動かす）
 - シーン: `TitleScene` → `GameScene` → `GameOverScene` → `LeaderboardScene`
 - スコアは `localStorage`（`kyushu_scores`）に `version` 付きで保存
 - デプロイ: GitHub Actions → GitHub Pages（mainブランチへのpushで自動）
@@ -100,3 +103,4 @@ EASY / NORMAL / HARD / EXTREME の4段階。選択は `registry` に保存しリ
 | v0.1.4 | **真因修正**: overlap引数入替で自機をdestroyしていたバグを解消 |
 | (tag) | `prototype-v0.1.4` — プロトタイプ確定版として保存 |
 | v0.2.0 | 難易度4段階(EASY/NORMAL/HARD/EXTREME)+選択UI・スタートボタン / 武器3種・バリア追加 / 全体リバランス（HP・回復見直し） |
+| v0.2.1 | 画像アセット導入: タイトルロゴ(`img/KyushuShooterTitle.png`)＋熊本空撮背景(`img/kumamoto_background.png`)。手描き背景をTileSpriteの空撮スクロールに置換 |

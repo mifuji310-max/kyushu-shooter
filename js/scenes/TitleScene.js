@@ -1,6 +1,10 @@
 class TitleScene extends Phaser.Scene {
   constructor() { super({ key: 'TitleScene' }); }
 
+  preload() {
+    this.load.image('title_logo', 'img/KyushuShooterTitle.png');
+  }
+
   create() {
     // 前回選んだ難易度を引き継ぐ（なければNORMAL）
     this._selected = this.registry.get('difficulty') || 'NORMAL';
@@ -16,18 +20,14 @@ class TitleScene extends Phaser.Scene {
       });
     }
 
-    // タイトルロゴ
-    this.add.text(GW / 2, 78, '九州シューター', {
-      fontSize: '36px', fontFamily: 'sans-serif',
-      color: '#ffffff', stroke: '#0044ff', strokeThickness: 4,
-    }).setOrigin(0.5);
+    // タイトルロゴ画像（黒背景はSCREEN合成で透過させ星空に重ねる）
+    this.add.image(GW / 2, 120, 'title_logo')
+      .setScale(0.25)
+      .setBlendMode(Phaser.BlendModes.SCREEN);
 
-    this.add.text(GW / 2, 120, '熊本ステージ', {
+    this.add.text(GW / 2, 212, '熊本ステージ', {
       fontSize: '20px', fontFamily: 'sans-serif', color: '#ffcc00',
     }).setOrigin(0.5);
-
-    // ジムニーのイラスト
-    this._drawJimny(GW / 2, 188);
 
     // ─ 難易度選択 ─
     this.add.text(GW / 2, 250, '難易度を選択', {

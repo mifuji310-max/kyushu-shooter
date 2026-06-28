@@ -10,6 +10,13 @@ class GameScene extends Phaser.Scene {
     this.registry.set('difficulty', this.diffKey); // リトライ時に引き継ぐ
   }
 
+  preload() {
+    // 背景（熊本の空撮）。読み込み済みならスキップされる
+    if (!this.textures.exists('bg_kumamoto')) {
+      this.load.image('bg_kumamoto', 'img/kumamoto_background.png');
+    }
+  }
+
   create() {
     this.score      = 0;
     this.stageTime  = 0;
@@ -356,49 +363,19 @@ class GameScene extends Phaser.Scene {
   // ─── BACKGROUND ────────────────────────────────────────
 
   _makeBackground() {
-    // 空（夜明け前の暗い空）
-    this.add.rectangle(GW / 2, 60, GW, 120, 0x1a1a35).setDepth(0);
-    this.add.rectangle(GW / 2, 160, GW, 80, 0x1a2a1a).setDepth(0);
+    // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
+    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'bg_kumamoto').setDepth(0);
+    const s = GW / 724; // 画像幅(724px)をゲーム幅に合わせる
+    this._bg.tileScaleX = s;
+    this._bg.tileScaleY = s;
 
-    // 田んぼ（左右）
-    const fieldW = (GW - 130) / 2;
-    this.add.rectangle(fieldW / 2, PLAY_H / 2, fieldW, PLAY_H, 0x1c3a10).setDepth(0);
-    this.add.rectangle(GW - fieldW / 2, PLAY_H / 2, fieldW, PLAY_H, 0x1c3a10).setDepth(0);
-
-    // 田んぼの畦（横線）スクロール用
-    this._fieldLines = [];
-    const fieldLX = fieldW / 2;
-    const fieldRX = GW - fieldW / 2;
-    for (let i = 0; i < 12; i++) {
-      const y = i * (PLAY_H / 10);
-      const lLine = this.add.rectangle(fieldLX, y, fieldW - 4, 2, 0x2a5a18, 0.7).setDepth(1);
-      const rLine = this.add.rectangle(fieldRX, y, fieldW - 4, 2, 0x2a5a18, 0.7).setDepth(1);
-      this._fieldLines.push({ obj: lLine, y, x: fieldLX });
-      this._fieldLines.push({ obj: rLine, y, x: fieldRX });
-    }
-
-    // 道路（中央）
-    this.add.rectangle(GW / 2, PLAY_H / 2, 130, PLAY_H, 0x2e2e2e).setDepth(1);
-    // 歩道（道路縁石）
-    this.add.rectangle(GW / 2 - 65, PLAY_H / 2, 6, PLAY_H, 0x8a8878).setDepth(2);
-    this.add.rectangle(GW / 2 + 65, PLAY_H / 2, 6, PLAY_H, 0x8a8878).setDepth(2);
-
-    // 道路中央ライン（スクロール）
-    // 弾(黄色・短い丸帯)と紛れないよう、長く・細く・薄い灰白色のレーン標示にする
-    this._roadDashes = [];
-    const dashSpacing = 90;
-    const dashCount = Math.ceil((PLAY_H + 180) / dashSpacing);
-    this._roadLoopH = dashCount * dashSpacing;
-    for (let i = 0; i < dashCount; i++) {
-      const y = i * dashSpacing - 90;
-      const dash = this.add.rectangle(GW / 2, y, 5, 46, 0xb0ad95, 0.32).setDepth(3);
-      this._roadDashes.push({ obj: dash, y });
-    }
+    // 自機・敵・弾の視認性確保のため暗めオーバーレイ
+    this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000814, 0.34).setDepth(1);
 
     // 操作エリア背景
-    this.add.rectangle(GW / 2, GH - CONTROL_H / 2, GW, CONTROL_H, C.CTRL_BG, 0.9).setDepth(20);
+    this.add.rectangle(GW / 2, GH - CONTROL_H / 2, GW, CONTROL_H, C.CTRL_BG, 0.95).setDepth(20);
     this.add.text(GW / 2, GH - CONTROL_H + 14, '◀  ここでタッチ操作  ▶', {
-      fontSize: '13px', fontFamily: 'sans-serif', color: '#334488',
+      fontSize: '13px', fontFamily: 'sans-serif', color: '#5577aa',
     }).setOrigin(0.5).setDepth(21);
 
     const div = this.add.graphics().setDepth(22);
@@ -409,19 +386,8 @@ class GameScene extends Phaser.Scene {
     // FPSに依存しないよう時間ベースで進める（タッチ操作時の速度急変を防ぐ）
     // capを34ms(≒2フレーム)に絞り、指を離した瞬間のカクつきによる速度スパイクを抑える
     const f = Math.min(delta, 34) / 16.667;
-    const speed = 2.5 * f;
-    // 道路ダッシュ（均等間隔を保ってループ）
-    for (const d of this._roadDashes) {
-      d.y += speed * 2;
-      if (d.y > this._roadLoopH - 90) d.y -= this._roadLoopH;
-      d.obj.y = d.y;
-    }
-    // 田んぼ畦
-    for (const l of this._fieldLines) {
-      l.y += speed;
-      if (l.y > PLAY_H + 10) l.y -= PLAY_H + 20;
-      l.obj.y = l.y;
-    }
+    // 前進感を出すため背景を下方向へ流す（tilePositionはテクスチャ座標なのでtileScaleで割る）
+    this._bg.tilePositionY -= (3.2 * f) / this._bg.tileScaleY;
   }
 
   // ─── SETUP ─────────────────────────────────────────────
