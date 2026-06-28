@@ -104,3 +104,4 @@ EASY / NORMAL / HARD / EXTREME の4段階。選択は `registry` に保存しリ
 | (tag) | `prototype-v0.1.4` — プロトタイプ確定版として保存 |
 | v0.2.0 | 難易度4段階(EASY/NORMAL/HARD/EXTREME)+選択UI・スタートボタン / 武器3種・バリア追加 / 全体リバランス（HP・回復見直し） |
 | v0.2.1 | 画像アセット導入: タイトルロゴ(`img/KyushuShooterTitle.png`)＋熊本空撮背景(`img/kumamoto_background.png`)。手描き背景をTileSpriteの空撮スクロールに置換 |
+| v0.2.2 | 自機を画像(`img/player.png` 真上視点4WD)に差し替え。表示60px・控えめな当たり判定(33×45) |

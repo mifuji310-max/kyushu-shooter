@@ -11,9 +11,12 @@ class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    // 背景（熊本の空撮）。読み込み済みならスキップされる
+    // 読み込み済みならスキップされる
     if (!this.textures.exists('bg_kumamoto')) {
       this.load.image('bg_kumamoto', 'img/kumamoto_background.png');
+    }
+    if (!this.textures.exists('player_img')) {
+      this.load.image('player_img', 'img/player.png');
     }
   }
 
@@ -393,11 +396,13 @@ class GameScene extends Phaser.Scene {
   // ─── SETUP ─────────────────────────────────────────────
 
   _makePlayer() {
-    this.player = this.physics.add.sprite(GW / 2, PLAY_H - 60, 'player');
+    this.player = this.physics.add.sprite(GW / 2, PLAY_H - 60, 'player_img');
     this.player.setCollideWorldBounds(false);
     this.player.setDepth(10);
-    this.player.body.setSize(44, 32);
-    this.player.body.setOffset(6, 8);
+    this.player.setScale(0.0586); // 1024px → 約60px表示
+    // 当たり判定は車体に合わせ控えめに（テクスチャ座標で指定）
+    this.player.body.setSize(560, 760);
+    this.player.body.setOffset(232, 132);
   }
 
   _makeGroups() {
