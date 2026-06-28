@@ -6,6 +6,8 @@ class LeaderboardScene extends Phaser.Scene {
   }
 
   create() {
+    this.cameras.main.setZoom(DPR).centerOn(GW / 2, GH / 2); // 高解像度化（座標系は不変）
+
     this._stars = [];
     this._starGfx = this.add.graphics();
     for (let i = 0; i < 60; i++) {
@@ -24,7 +26,9 @@ class LeaderboardScene extends Phaser.Scene {
       fontSize: '13px', fontFamily: 'sans-serif', color: '#666688',
     }).setOrigin(0.5);
 
-    const scores = JSON.parse(localStorage.getItem('kyushu_scores') || '[]');
+    let scores = JSON.parse(localStorage.getItem('kyushu_scores') || '[]');
+    scores = this._dedupe(scores);
+    localStorage.setItem('kyushu_scores', JSON.stringify(scores)); // 掃除結果を保存
     this._drawRankings(scores);
 
     // ボタン
@@ -56,6 +60,15 @@ class LeaderboardScene extends Phaser.Scene {
       if (s.y > GH) s.y -= GH;
       this._starGfx.fillRect(s.x, s.y, s.size, s.size);
     }
+  }
+
+  // 旧バージョンの不具合で生じた重複（同スコアの「名無し」と記名のダブり）を掃除。
+  // 同じ(score,version)に記名エントリがある場合、名無しの方を削除する。
+  _dedupe(scores) {
+    const named = new Set(
+      scores.filter(s => s.name).map(s => s.score + '|' + (s.version || ''))
+    );
+    return scores.filter(s => s.name || !named.has(s.score + '|' + (s.version || '')));
   }
 
   _drawRankings(scores) {

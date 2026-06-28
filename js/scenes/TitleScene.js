@@ -6,6 +6,8 @@ class TitleScene extends Phaser.Scene {
   }
 
   create() {
+    this.cameras.main.setZoom(DPR).centerOn(GW / 2, GH / 2); // 高解像度化（座標系は不変）
+
     // 前回選んだ難易度を引き継ぐ（なければNORMAL）
     this._selected = this.registry.get('difficulty') || 'NORMAL';
 

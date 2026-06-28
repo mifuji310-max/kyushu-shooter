@@ -92,6 +92,16 @@ EASY / NORMAL / HARD / EXTREME の4段階。選択は `registry` に保存しリ
 - **コードを変更してpushする前に必ず `js/config.js` の `VERSION` を上げる**
   （デプロイ反映をタイトル画面で確認するため）。
   - 微修正・バグ修正: パッチ +1（例 v0.1.3 → v0.1.4）
+- **`index.html` の各scriptタグの `?v=` も VERSION と同じ値に揃える**
+  （スマホのキャッシュを確実に更新するためのバスター。揃え忘れると古いJSが残る）
+
+## 描画解像度（高DPI対応）
+- 端末のCSSピクセルにバッファを合わせるため、ゲームバッファを `DPR` 倍にしている。
+  - `game.js`: `width: GW*DPR, height: GH*DPR`
+  - 各シーン `create()` 冒頭: `this.cameras.main.setZoom(DPR).centerOn(GW/2, GH/2)`
+  - これで**座標系は GW×GH のまま**、実解像度だけ上がる（ロゴ等の細部が滲まない）
+  - 注意: カメラズーム下では `pointer.x/y` はバッファ座標になるので、タッチ判定は
+    `pointer.worldX/worldY` を使うこと（`_setupTouch`）。
 
 ## バージョン履歴
 | Ver | 内容 |
@@ -105,3 +115,4 @@ EASY / NORMAL / HARD / EXTREME の4段階。選択は `registry` に保存しリ
 | v0.2.0 | 難易度4段階(EASY/NORMAL/HARD/EXTREME)+選択UI・スタートボタン / 武器3種・バリア追加 / 全体リバランス（HP・回復見直し） |
 | v0.2.1 | 画像アセット導入: タイトルロゴ(`img/KyushuShooterTitle.png`)＋熊本空撮背景(`img/kumamoto_background.png`)。手描き背景をTileSpriteの空撮スクロールに置換 |
 | v0.2.2 | 自機を画像(`img/player.png` 真上視点4WD)に差し替え。表示60px・控えめな当たり判定(33×45) |
+| v0.2.3 | 高解像度化(描画バッファをDPR倍・各シーンでカメラズーム) / スコア重複登録バグ修正(ID方式+旧データ掃除) / 背景スクロールを減速・スパイク抑制 / JSにキャッシュバスター付与 |

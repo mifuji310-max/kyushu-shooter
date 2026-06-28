@@ -4,7 +4,12 @@ const GH = 700;
 const CONTROL_H = 180; // 下部タッチ操作エリアの高さ
 const PLAY_H = GH - CONTROL_H;
 
-const VERSION = 'v0.2.2';
+// 描画解像度の倍率（高DPI端末で滲まないようにする）。
+// ゲーム本体は GW×GH 座標で動かし、各シーンでカメラを DPR 倍ズームして
+// 実バッファだけを高解像度化する（座標系は不変）。
+const DPR = Math.min(window.devicePixelRatio || 1, 3);
+
+const VERSION = 'v0.2.3';
 
 // カラーパレット
 const C = {

@@ -4,9 +4,13 @@ class GameOverScene extends Phaser.Scene {
   init(data) {
     this._score   = data.score   || 0;
     this._cleared = data.cleared || false;
+    this._scoreId = (data && data.scoreId) || null;
+    this._submitted = false;
   }
 
   create() {
+    this.cameras.main.setZoom(DPR).centerOn(GW / 2, GH / 2); // 高解像度化（座標系は不変）
+
     this._stars = [];
     this._starGfx = this.add.graphics();
     for (let i = 0; i < 60; i++) {
@@ -137,14 +141,22 @@ class GameOverScene extends Phaser.Scene {
   }
 
   _submit() {
+    if (this._submitted) return; // 二重登録防止
+    this._submitted = true;
+
     const name = (this._nameInput ? this._nameInput.value.trim() : '') || '名無し';
-    // ローカルに名前付きスコアを更新
     const scores = JSON.parse(localStorage.getItem('kyushu_scores') || '[]');
-    // 直近のスコアに名前を付与
-    if (scores.length > 0 && !scores[0].name) {
-      scores[0].name = name;
+
+    // 保存済みエントリをIDで特定して名前を上書き（重複を作らない）
+    let entry = this._scoreId ? scores.find(s => s.id === this._scoreId) : null;
+    if (!entry) {
+      // 旧データ用フォールバック: 同点で名前未設定の最新エントリ
+      entry = scores.find(s => s.score === this._score && !s.name);
+    }
+    if (entry) {
+      entry.name = name;
     } else {
-      scores.unshift({ score: this._score, name, version: VERSION, date: new Date().toISOString() });
+      scores.push({ id: 'g' + Date.now(), score: this._score, name, version: VERSION, date: new Date().toISOString() });
     }
     scores.sort((a, b) => b.score - a.score);
     localStorage.setItem('kyushu_scores', JSON.stringify(scores.slice(0, 100)));

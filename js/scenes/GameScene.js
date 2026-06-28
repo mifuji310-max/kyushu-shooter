@@ -21,6 +21,8 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
+    this.cameras.main.setZoom(DPR).centerOn(GW / 2, GH / 2); // 高解像度化（座標系は不変）
+
     this.score      = 0;
     this.stageTime  = 0;
     this.bossActive = false;
@@ -386,11 +388,11 @@ class GameScene extends Phaser.Scene {
   }
 
   _scrollBackground(delta) {
-    // FPSに依存しないよう時間ベースで進める（タッチ操作時の速度急変を防ぐ）
-    // capを34ms(≒2フレーム)に絞り、指を離した瞬間のカクつきによる速度スパイクを抑える
-    const f = Math.min(delta, 34) / 16.667;
+    // FPSに依存しないよう時間ベースで進める。capを26ms(≒1.5フレーム)に絞り、
+    // 指を離した瞬間のカクつきによる速度スパイクを抑える。
+    const f = Math.min(delta, 26) / 16.667;
     // 前進感を出すため背景を下方向へ流す（tilePositionはテクスチャ座標なのでtileScaleで割る）
-    this._bg.tilePositionY -= (3.2 * f) / this._bg.tileScaleY;
+    this._bg.tilePositionY -= (2.0 * f) / this._bg.tileScaleY;
   }
 
   // ─── SETUP ─────────────────────────────────────────────
@@ -464,16 +466,17 @@ class GameScene extends Phaser.Scene {
     this._touch = { id: null, startX: 0, playerStartX: GW / 2 };
     this._cursors = this.input.keyboard.createCursorKeys();
 
+    // カメラズーム下では ptr.x/y はバッファ座標になるため worldX/worldY を使う
     this.input.on('pointerdown', ptr => {
-      if (this._touch.id === null && ptr.y >= PLAY_H) {
+      if (this._touch.id === null && ptr.worldY >= PLAY_H) {
         this._touch.id = ptr.id;
-        this._touch.startX = ptr.x;
+        this._touch.startX = ptr.worldX;
         this._touch.playerStartX = this.player.x;
       }
     });
     this.input.on('pointermove', ptr => {
       if (ptr.id === this._touch.id && ptr.isDown) {
-        const nx = this._touch.playerStartX + (ptr.x - this._touch.startX);
+        const nx = this._touch.playerStartX + (ptr.worldX - this._touch.startX);
         this.player.x = Phaser.Math.Clamp(nx, 30, GW - 30);
       }
     });
@@ -1051,17 +1054,21 @@ class GameScene extends Phaser.Scene {
 
     const finalScore = this.score + (cleared ? 10000 : 0);
     if (cleared) this.score = finalScore;
-    this._saveScore(finalScore);
+    const scoreId = this._saveScore(finalScore);
 
     this.time.delayedCall(cleared ? 1600 : 800, () => {
-      this.scene.start('GameOverScene', { score: finalScore, cleared });
+      this.scene.start('GameOverScene', { score: finalScore, cleared, scoreId });
     });
   }
 
   _saveScore(score) {
+    // 一意IDを付けて1件だけ保存。名前は後でGameOverSceneがこのIDで上書きする
+    // （以前は無名で保存→別途追加していたため重複していた）
+    const id = Date.now() + '_' + Math.floor(Math.random() * 1e6);
     const scores = JSON.parse(localStorage.getItem('kyushu_scores') || '[]');
-    scores.push({ score, version: VERSION, difficulty: this.diffKey, date: new Date().toISOString() });
+    scores.push({ id, score, name: '', version: VERSION, difficulty: this.diffKey, date: new Date().toISOString() });
     scores.sort((a, b) => b.score - a.score);
     localStorage.setItem('kyushu_scores', JSON.stringify(scores.slice(0, 100)));
+    return id;
   }
 }
