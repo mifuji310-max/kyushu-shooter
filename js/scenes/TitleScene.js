@@ -51,17 +51,11 @@ class TitleScene extends Phaser.Scene {
     this._refreshDiffButtons();
 
     // ─ スタートボタン ─
-    this._startBtn = this.add.container(GW / 2, 462);
-    const btnBg = this.add.rectangle(0, 0, 240, 56, 0x113322)
-      .setStrokeStyle(2, 0x44ff88);
-    const btnTxt = TXT(this, 0, 0, '▶ ゲームスタート', {
-      fontSize: '22px', fontFamily: 'sans-serif', color: '#aaffcc',
-    }).setOrigin(0.5);
-    this._startBtn.add([btnBg, btnTxt]);
-    btnBg.setInteractive({ useHandCursor: true });
-    btnBg.on('pointerover', () => { btnBg.setFillStyle(0x1a5533); btnTxt.setColor('#ffffff'); });
-    btnBg.on('pointerout',  () => { btnBg.setFillStyle(0x113322); btnTxt.setColor('#aaffcc'); });
-    btnBg.on('pointerdown', () => this._start());
+    this._startBtn = mkButton(this, GW / 2, 466, 'GAME START', {
+      w: 244, h: 58, fontSize: '25px',
+      bg: 0x0f3d24, bgHover: 0x1a6b3f, border: 0x44ff88, fg: '#c7ffdd',
+      onClick: () => this._start(),
+    });
     this.tweens.add({ targets: this._startBtn, scaleX: 1.04, scaleY: 1.04,
       duration: 700, yoyo: true, repeat: -1 });
 
@@ -72,11 +66,11 @@ class TitleScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ランキングボタン
-    const rankBtn = TXT(this, GW / 2, 556, '[ ランキングを見る ]', {
-      fontSize: '15px', fontFamily: 'sans-serif', color: '#ffcc88',
-      padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    rankBtn.on('pointerdown', () => this.scene.start('LeaderboardScene'));
+    mkButton(this, GW / 2, 558, 'ランキング', {
+      w: 170, h: 40, fontSize: '16px',
+      bg: 0x3a2c12, bgHover: 0x62481e, border: 0xffbb66, fg: '#ffe6c2',
+      onClick: () => this.scene.start('LeaderboardScene'),
+    });
 
     // バージョン
     TXT(this, GW - 8, GH - 8, VERSION, {

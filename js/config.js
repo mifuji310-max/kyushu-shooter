@@ -1,7 +1,7 @@
 // ゲーム定数
 const GW = 400;
 const GH = 700;
-const CONTROL_H = 180; // 下部タッチ操作エリアの高さ
+const CONTROL_H = 100; // 下部タッチ操作エリアの高さ（半分に縮小）
 const PLAY_H = GH - CONTROL_H;
 
 // 描画解像度の倍率（高DPI端末で滲まないようにする）。
@@ -21,7 +21,37 @@ function TXT(scene, x, y, str, style) {
   return scene.add.text(x, y, str, style);
 }
 
-const VERSION = 'v0.3.3';
+// スタイリッシュなボタン（角丸・枠・ホバー）。container を返し .bg/.txt を持つ。
+function mkButton(scene, x, y, label, opts) {
+  opts = opts || {};
+  const w = opts.w || 150, h = opts.h || 46, rad = opts.rad || 10;
+  const bg = opts.bg ?? 0x16233f, bgHover = opts.bgHover ?? 0x27406e;
+  const border = opts.border ?? 0x4a86ff, fg = opts.fg || '#dbe8ff';
+  const cont = scene.add.container(x, y);
+  if (opts.depth !== undefined) cont.setDepth(opts.depth);
+  const g = scene.add.graphics();
+  const draw = (fill) => {
+    g.clear();
+    g.fillStyle(fill, 1).fillRoundedRect(-w / 2, -h / 2, w, h, rad);
+    g.lineStyle(2, border, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, rad);
+  };
+  draw(bg);
+  const t = TXT(scene, 0, 0, label, {
+    fontSize: opts.fontSize || '17px', color: fg, fontStyle: 'bold',
+  }).setOrigin(0.5);
+  cont.add([g, t]);
+  const hit = scene.add.zone(0, 0, w, h).setOrigin(0.5)
+    .setInteractive({ useHandCursor: true });
+  cont.add(hit);
+  hit.on('pointerover', () => draw(bgHover));
+  hit.on('pointerout', () => draw(bg));
+  if (opts.onClick) hit.on('pointerdown', opts.onClick);
+  cont.bg = g; cont.txt = t; cont.hit = hit;
+  cont.redraw = draw;
+  return cont;
+}
+
+const VERSION = 'v0.3.4';
 
 // カラーパレット
 const C = {

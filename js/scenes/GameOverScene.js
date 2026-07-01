@@ -61,34 +61,25 @@ class GameOverScene extends Phaser.Scene {
     this._nameInput = this._createInputOverlay();
 
     // 登録ボタン
-    this._submitBtn = TXT(this, GW / 2, 420, '[ スコアを登録 ]', {
-      fontSize: '20px', fontFamily: 'sans-serif',
-      color: '#00ccff', backgroundColor: '#001133',
-      padding: { x: 14, y: 8 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    this._submitBtn.on('pointerover', () => this._submitBtn.setColor('#ffffff'));
-    this._submitBtn.on('pointerout',  () => this._submitBtn.setColor('#00ccff'));
-    this._submitBtn.on('pointerdown', () => this._submit());
+    this._submitBtn = mkButton(this, GW / 2, 424, 'スコアを登録', {
+      w: 200, h: 48, fontSize: '19px',
+      bg: 0x083047, bgHover: 0x0f567f, border: 0x00ccff, fg: '#cdf3ff',
+      onClick: () => this._submit(),
+    });
 
     // ボタン群
-    const retryBtn = TXT(this, GW / 2 - 80, 490, '[ もう一度 ]', {
-      fontSize: '18px', fontFamily: 'sans-serif', color: '#aaffaa',
-      padding: { x: 10, y: 6 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    retryBtn.on('pointerdown', () => { this._cleanup(); this.scene.start('GameScene'); });
-
-    const rankBtn = TXT(this, GW / 2 + 80, 490, '[ ランキング ]', {
-      fontSize: '18px', fontFamily: 'sans-serif', color: '#ffcc88',
-      padding: { x: 10, y: 6 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    rankBtn.on('pointerdown', () => { this._cleanup(); this.scene.start('LeaderboardScene'); });
-
-    const titleBtn = TXT(this, GW / 2, 540, '[ タイトルへ ]', {
-      fontSize: '16px', fontFamily: 'sans-serif', color: '#888888',
-      padding: { x: 10, y: 6 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    titleBtn.on('pointerdown', () => { this._cleanup(); this.scene.start('TitleScene'); });
+    mkButton(this, GW / 2 - 78, 492, 'もう一度', {
+      w: 140, h: 42, fontSize: '17px', bg: 0x123a20, bgHover: 0x1e6236, border: 0x66dd88, fg: '#c7ffd6',
+      onClick: () => { this._cleanup(); this.scene.start('GameScene'); },
+    });
+    mkButton(this, GW / 2 + 78, 492, 'ランキング', {
+      w: 140, h: 42, fontSize: '17px', bg: 0x3a2c12, bgHover: 0x62481e, border: 0xffbb66, fg: '#ffe6c2',
+      onClick: () => { this._cleanup(); this.scene.start('LeaderboardScene'); },
+    });
+    mkButton(this, GW / 2, 546, 'タイトルへ', {
+      w: 150, h: 38, fontSize: '15px', bg: 0x22243a, bgHover: 0x383c5e, border: 0x8890c0, fg: '#c6cbe8',
+      onClick: () => { this._cleanup(); this.scene.start('TitleScene'); },
+    });
   }
 
   update() {
@@ -183,7 +174,8 @@ class GameOverScene extends Phaser.Scene {
     };
 
     if (typeof RemoteScores !== 'undefined' && RemoteScores.available) {
-      this._submitBtn.setText('[ 登録中... ]').disableInteractive();
+      this._submitBtn.txt.setText('登録中...');
+      this._submitBtn.hit.disableInteractive();
       RemoteScores.submit(remoteEntry).then(go).catch(go);
       this.time.delayedCall(4000, go); // 通信が遅い場合の保険
     } else {

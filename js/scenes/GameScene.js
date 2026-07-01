@@ -24,6 +24,11 @@ class GameScene extends Phaser.Scene {
     load('boss1', 'img/boss_fase1.png');
     load('boss2', 'img/boss_fase2.png');
     load('boss3', 'img/boss_fase3.png');
+    load('item_power', 'img/item_power.png');
+    load('item_heal', 'img/item_heal.png');
+    load('item_spread', 'img/item_spread.png');
+    load('item_big', 'img/item_big.png');
+    load('item_barrier', 'img/item_barrier.png');
   }
 
   create() {
@@ -91,21 +96,14 @@ class GameScene extends Phaser.Scene {
     this._texPlayer();
     this._texBullet();
     this._texEnemyBullet();
-    this._texRenkon();
     this._texJintaiko();
     this._texKingyo();
-    this._texChip();
     this._texKyoryu();
     this._texUma();
-    this._texBoss();
     this._texExplosion();
-    this._texIkinaridango();
-    this._texTennensui();
     this._texBigBullet();
     this._texShield();
-    this._texSpreadItem();
-    this._texBigItem();
-    this._texBarrierItem();
+    // 蓮根/半導体/ボス/アイテムは画像を使用（生成不要）
   }
 
   _texBigBullet() {
@@ -439,8 +437,8 @@ class GameScene extends Phaser.Scene {
 
     // ─ ボスHPバー（上部・非表示待機）
     this._bossHpContainer = this.add.container(0, 0).setDepth(30).setVisible(false);
-    const bossLabel = TXT(this, GW / 2, 32, '機械くまモン', {
-      fontSize: '13px', fontFamily: 'sans-serif', color: '#ff6666',
+    const bossLabel = TXT(this, GW / 2, 32, 'B O S S', {
+      fontSize: '14px', fontFamily: 'sans-serif', color: '#ff6666', fontStyle: 'bold',
     }).setOrigin(0.5);
     const bossHpBg = this.add.rectangle(GW / 2, 46, GW - 40, 12, C.HP_BG).setOrigin(0.5);
     this._bossHpBar = this.add.rectangle(20, 46, GW - 40, 12, C.BOSS_HP_BAR).setOrigin(0, 0.5);
@@ -614,22 +612,21 @@ class GameScene extends Phaser.Scene {
 
   _startBoss() {
     this.bossActive = true;
-    this._bossY = 195; // HPゲージに被らない待機位置
+    this._bossY = 158; // HPゲージに被らない待機位置（やや上）
     Object.values(this.waveTimers).forEach(t => t && t.remove());
     this.enemies.clear(true, true);
 
-    // 荘厳な暗転＋長めの地響き
+    // 荘厳な暗転（画面全体の振動はしない）
     const veil = this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000000, 0).setDepth(38);
     this.tweens.add({ targets: veil, alpha: 0.5, duration: 800, yoyo: true, hold: 1400,
       onComplete: () => veil.destroy() });
-    this.cameras.main.shake(2600, 0.005);
 
     // 警告演出
     const warn = TXT(this, GW / 2, PLAY_H / 2 - 34, '⚠ W A R N I N G ⚠', {
       fontSize: '24px', color: '#ff3355', stroke: '#000', strokeThickness: 5, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(40).setAlpha(0);
-    const nm = TXT(this, GW / 2, PLAY_H / 2 + 6, '機械くまモン 降臨', {
-      fontSize: '30px', color: '#ffffff', stroke: '#aa0000', strokeThickness: 5, fontStyle: 'bold',
+    const nm = TXT(this, GW / 2, PLAY_H / 2 + 6, 'B O S S', {
+      fontSize: '34px', color: '#ffffff', stroke: '#aa0000', strokeThickness: 5, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(40).setAlpha(0);
     this.tweens.add({ targets: [warn, nm], alpha: 1, duration: 450, yoyo: true, hold: 1700, delay: 250,
       onComplete: () => { warn.destroy(); nm.destroy(); } });
@@ -648,12 +645,10 @@ class GameScene extends Phaser.Scene {
     this.bossGroup.add(this.boss);
     this._bossHpContainer.setVisible(true);
 
-    // ジワーッと降臨（ゆっくりイージング）
+    // ジワーッと降臨（ゆっくりイージング・画面振動なし）
     this.tweens.add({
       targets: this.boss, y: this._bossY, duration: 2800, ease: 'Sine.easeInOut', delay: 500,
-      onComplete: () => {
-        if (this.boss) { this.boss.entering = false; this.cameras.main.shake(320, 0.012); }
-      },
+      onComplete: () => { if (this.boss) this.boss.entering = false; },
     });
   }
 
@@ -664,15 +659,14 @@ class GameScene extends Phaser.Scene {
     b.elapsed += delta;
 
     const hpRatio = b.bossHP / this.bossMaxHP;
-    if (hpRatio <= 0.5 && b.phase === 1) {
-      b.phase = 2;
-      b.setTexture('boss2'); // 表示サイズ(scale)は維持される
-      this._bossPhaseBanner('フェーズ2');
-    }
-    if (hpRatio <= 0.25 && b.phase === 2) {
-      b.phase = 3;
-      b.setTexture('boss3');
-      this._bossPhaseBanner('フェーズ3（最終）');
+    if (hpRatio <= 0.5 && b.phase === 1) this._bossPhaseChange(b, 2, 'boss2', 'PHASE 2', time);
+    if (hpRatio <= 0.25 && b.phase === 2) this._bossPhaseChange(b, 3, 'boss3', 'FINAL PHASE', time);
+
+    // フェーズ移行のクッション中は攻撃せず、ゆっくり中央へ戻す（無敵）
+    if (b.transitionUntil && time < b.transitionUntil) {
+      b.x += (GW / 2 - b.x) * 0.05;
+      b.y += (this._bossY - b.y) * 0.05;
+      return;
     }
 
     const freq = b.phase === 1 ? 0.8 : b.phase === 2 ? 1.2 : 1.5;
@@ -689,6 +683,21 @@ class GameScene extends Phaser.Scene {
       b.lastCharge = time;
       this._bossCharge();
     }
+  }
+
+  // フェーズ移行に1クッション（無敵・光る・拡大脈動・バナー）
+  _bossPhaseChange(b, phase, tex, label, time) {
+    b.phase = phase;
+    b.transitionUntil = time + 1500;
+    this.cameras.main.flash(220, 255, 230, 190);
+    this._explode(b.x, b.y);
+    b.setTexture(tex);
+    b.setTintFill(0xffffff); // 白く光って「変身」
+    const base = b.scaleX;
+    this.tweens.add({ targets: b, scaleX: base * 1.12, scaleY: base * 1.12,
+      duration: 220, yoyo: true, repeat: 2 });
+    this.time.delayedCall(900, () => { if (b && b.active) b.clearTint(); });
+    this._bossPhaseBanner(label);
   }
 
   _bossShoot(phase) {
@@ -761,11 +770,14 @@ class GameScene extends Phaser.Scene {
     const item = this.items.create(x, y, key);
     item.itemType = key;
     item.setDepth(7);
+    item.setDisplaySize(32, 32); // 画像アイコン
     item.setVelocityY(70);
-    item.body.setSize(20, 24);
-    // 光るアニメ
+    item.body.setSize(item.width * 0.72, item.height * 0.72);
+    item.body.setOffset(item.width * 0.14, item.height * 0.14);
+    // 光るアニメ（表示スケール基準で脈動）
+    const base = item.scaleX;
     this.tweens.add({
-      targets: item, scaleX: 1.15, scaleY: 1.15,
+      targets: item, scaleX: base * 1.14, scaleY: base * 1.14,
       duration: 400, yoyo: true, repeat: -1,
     });
   }
@@ -859,19 +871,26 @@ class GameScene extends Phaser.Scene {
           else if (e.x > GW - 20) { e.setVelocityX(-Math.abs(e.body.velocity.x)); }
           if (time - e.lastShot > ENEMY_CFG.kyoryu.shootInterval * this.diff.shootIntervalMul) {
             e.lastShot = time;
-            const a = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
-            this._spawnEnemyBullet(e.x, e.y + 16, Math.cos(a) * 200, Math.sin(a) * 200);
+            this._enemyAimedShot(e, 16, 200);
           }
           break;
         case 'wiggle':
           if (time - e.lastShot > ENEMY_CFG.jintaiko.shootInterval * this.diff.shootIntervalMul) {
             e.lastShot = time;
-            const a = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
-            this._spawnEnemyBullet(e.x, e.y + 14, Math.cos(a) * 190, Math.sin(a) * 190);
+            this._enemyAimedShot(e, 14, 190);
           }
           break;
       }
     });
+  }
+
+  // 自機に狙いを付けた敵弾。ただし自機より上にいる時だけ、かつ下向きコーンに限定
+  // （横・後方からの避けられない弾を撃たせない）
+  _enemyAimedShot(e, offY, speed) {
+    if (e.y > this.player.y - 30) return;
+    let a = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
+    a = Phaser.Math.Clamp(a, Math.PI * 0.28, Math.PI * 0.72); // 下向き±約40°に制限
+    this._spawnEnemyBullet(e.x, e.y + offY, Math.cos(a) * speed, Math.sin(a) * speed);
   }
 
   _updateUI() {
@@ -934,9 +953,11 @@ class GameScene extends Phaser.Scene {
   }
 
   _onBulletHitBoss(bullet, boss) {
+    bullet.destroy(); // 単体ボスでは貫通させず必ず消す（多重ヒット防止）
+    // フェーズ移行のクッション中や降臨中は無敵
+    if (boss.entering || (boss.transitionUntil && this.time.now < boss.transitionUntil)) return;
     boss.bossHP -= (bullet.damage || 1);
     this._flashWhite(boss);
-    bullet.destroy(); // 単体ボスでは貫通させず必ず消す（多重ヒット防止）
     if (boss.bossHP <= 0) this._bossDefeated();
   }
 
@@ -1050,11 +1071,13 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: this._pickupText, alpha: 0, delay: 1000, duration: 500 });
   }
 
+  // 被弾フラッシュ: alphaを使わずtintで一瞬白く。連続被弾でも半透明のまま固まらない。
   _flashWhite(sprite) {
-    this.tweens.add({
-      targets: sprite, alpha: 0.4, duration: 50, yoyo: true, repeat: 1,
-      onComplete: () => sprite && sprite.active && sprite.setAlpha(1),
-    });
+    if (!sprite || !sprite.active) return;
+    if (sprite._flashUntil && this.time.now < sprite._flashUntil) return; // 過剰点滅を抑制
+    sprite._flashUntil = this.time.now + 110;
+    sprite.setTintFill(0xffffff);
+    this.time.delayedCall(45, () => { if (sprite && sprite.active) sprite.clearTint(); });
   }
 
   _explode(x, y) {

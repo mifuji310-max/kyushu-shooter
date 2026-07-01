@@ -32,17 +32,14 @@ class LeaderboardScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ボタン
-    const retry = TXT(this, GW / 2 - 80, GH - 50, '[ もう一度 ]', {
-      fontSize: '18px', fontFamily: 'sans-serif', color: '#aaffaa',
-      padding: { x: 8, y: 6 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    retry.on('pointerdown', () => this.scene.start('GameScene'));
-
-    const title = TXT(this, GW / 2 + 80, GH - 50, '[ タイトル ]', {
-      fontSize: '18px', fontFamily: 'sans-serif', color: '#aaaaff',
-      padding: { x: 8, y: 6 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    title.on('pointerdown', () => this.scene.start('TitleScene'));
+    mkButton(this, GW / 2 - 80, GH - 48, 'もう一度', {
+      w: 148, h: 44, fontSize: '17px', bg: 0x123a20, bgHover: 0x1e6236, border: 0x66dd88, fg: '#c7ffd6',
+      onClick: () => this.scene.start('GameScene'),
+    });
+    mkButton(this, GW / 2 + 80, GH - 48, 'タイトル', {
+      w: 148, h: 44, fontSize: '17px', bg: 0x22243a, bgHover: 0x383c5e, border: 0x8890c0, fg: '#c6cbe8',
+      onClick: () => this.scene.start('TitleScene'),
+    });
 
     // ローカルは常に掃除して保持（オフライン用フォールバック）
     let local = this._dedupe(JSON.parse(localStorage.getItem('kyushu_scores') || '[]'));
