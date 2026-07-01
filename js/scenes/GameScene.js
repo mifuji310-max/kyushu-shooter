@@ -43,8 +43,9 @@ class GameScene extends Phaser.Scene {
     this.playerHP   = this.playerMaxHP;
     this.invincible = false;
     this.gameEnded  = false;
-    this.weapon     = 'normal';
-    this.powerLevel = 1;   // 1〜3
+    this.powerLevel = 1;   // 団子: 本数
+    this.spreadLv   = 0;   // 拡散: 扇の広がり/本数
+    this.bigLv      = 0;   // 大玉: サイズ/威力/貫通
     this.shieldHits = 0;
     this._nextFireAt = 0;
     this.waveTimers = {};
@@ -810,65 +811,54 @@ class GameScene extends Phaser.Scene {
     this.player.x = Phaser.Math.Clamp(this.player.x, 30, GW - 30);
   }
 
+  // 拡散(spreadLv)・大玉(bigLv)・パワー(powerLevel)を合成して発射。
+  // 取れば取るほど本数・威力・貫通が増え、拡散×大玉のかけ合わせも効く。
   _playerFire() {
     if (this.gameEnded) return;
     const now = this.time.now;
     if (now < this._nextFireAt) return;
-    this._nextFireAt = now + WEAPON[this.weapon].fire;
+    this._nextFireAt = now + (110 + this.bigLv * 45); // 大玉ほど連射は遅い
 
     const cx = this.player.x;
     const cy = this.player.y - 30;
-    const lv = this.powerLevel;
+    // 本数 = 1 + 拡散Lv + (パワーLv-1)。最大9way。
+    const ways = Math.min(9, 1 + this.spreadLv + Math.max(0, this.powerLevel - 1));
 
-    if (this.weapon === 'normal') {
-      if (lv === 1) {
-        this._spawnBullet(cx, cy, 0);
-      } else if (lv === 2) {
-        this._spawnBullet(cx - 11, cy, -25);
-        this._spawnBullet(cx + 11, cy,  25);
-      } else {
-        this._spawnBullet(cx - 18, cy, -40);
-        this._spawnBullet(cx,      cy,   0);
-        this._spawnBullet(cx + 18, cy,  40);
-      }
-    } else if (this.weapon === 'spread') {
-      const ways = lv + 2;               // 3 / 4 / 5 way
-      const span = 0.5;                  // 片側の最大角(rad)
+    if (this.spreadLv > 0) {
+      // 扇状に広げる（大玉なら大玉が扇状に飛ぶ＝かけ合わせ）
+      const half = Math.min(1.0, 0.14 * (ways - 1));
+      const spd = 580;
       for (let i = 0; i < ways; i++) {
         const t = ways === 1 ? 0 : (i / (ways - 1) - 0.5) * 2; // -1〜1
-        const ang = -Math.PI / 2 + t * span;
-        this._spawnBullet(cx, cy, Math.cos(ang) * 560, Math.sin(ang) * 560);
+        const ang = -Math.PI / 2 + t * half;
+        this._fireBullet(cx, cy, Math.cos(ang) * spd, Math.sin(ang) * spd);
       }
-    } else { // big（貫通大玉）
-      if (lv === 1) {
-        this._spawnBigBullet(cx, cy, 0);
-      } else if (lv === 2) {
-        this._spawnBigBullet(cx - 14, cy, 0);
-        this._spawnBigBullet(cx + 14, cy, 0);
-      } else {
-        this._spawnBigBullet(cx - 20, cy, 0);
-        this._spawnBigBullet(cx,      cy, 0);
-        this._spawnBigBullet(cx + 20, cy, 0);
+    } else {
+      // 拡散無し: ほぼ平行に本数を増やす
+      for (let i = 0; i < ways; i++) {
+        const t = ways === 1 ? 0 : (i / (ways - 1) - 0.5) * 2; // -1〜1
+        this._fireBullet(cx + t * 16, cy, t * 18, -620);
       }
     }
   }
 
-  _spawnBullet(x, y, vx, vy) {
-    const b = this.playerBullets.create(x, y, 'bullet');
-    b.setDepth(6);
-    b.setVelocity(vx, vy === undefined ? -620 : vy);
-    b.body.setSize(4, 14);
-    b.damage = 1;
-    b.pierceLeft = 0;
-  }
-
-  _spawnBigBullet(x, y, vx) {
-    const b = this.playerBullets.create(x, y, 'bullet_big');
-    b.setDepth(6);
-    b.setVelocity(vx, -520);
-    b.body.setSize(14, 18);
-    b.damage = 2;
-    b.pierceLeft = 2;   // 2体まで貫通
+  // 1発生成。大玉Lvでサイズ・威力・貫通が上がる。
+  _fireBullet(x, y, vx, vy) {
+    const lv = this.bigLv;
+    if (lv > 0) {
+      const b = this.playerBullets.create(x, y, 'bullet_big');
+      b.setDepth(6).setVelocity(vx, vy);
+      b.setScale(0.7 + lv * 0.22);
+      b.body.setSize(b.width * 0.62, b.height * 0.62);
+      b.damage = 1 + lv;      // 2 / 3 / 4
+      b.pierceLeft = lv;      // 1 / 2 / 3 体貫通
+    } else {
+      const b = this.playerBullets.create(x, y, 'bullet');
+      b.setDepth(6).setVelocity(vx, vy);
+      b.body.setSize(b.width * 0.5, b.height * 0.8);
+      b.damage = 1;
+      b.pierceLeft = 0;
+    }
   }
 
   _updateEnemies(time, delta) {
@@ -922,10 +912,12 @@ class GameScene extends Phaser.Scene {
       hpRatio > 0.5 ? C.HP_GREEN : hpRatio > 0.25 ? C.HP_YELLOW : C.HP_RED
     );
 
-    const w = WEAPON[this.weapon];
-    let pt = w.label + ' Lv.' + this.powerLevel;
-    if (this.shieldHits > 0) pt += '  🛡' + this.shieldHits;
-    this._powerText.setText(pt).setColor(w.color);
+    // パワー/拡散/大玉/バリアを合成表示
+    let pt = 'P' + this.powerLevel;
+    if (this.spreadLv > 0) pt += ' 拡' + this.spreadLv;
+    if (this.bigLv > 0) pt += ' 玉' + this.bigLv;
+    if (this.shieldHits > 0) pt += ' 🛡' + this.shieldHits;
+    this._powerText.setText(pt).setColor(this.bigLv > 0 ? '#ff80ab' : this.spreadLv > 0 ? '#ffb060' : '#ffcc00');
 
     if (this.bossActive && this.boss && this.boss.active) {
       const bRatio = Phaser.Math.Clamp(this.boss.bossHP / this.bossMaxHP, 0, 1);
@@ -1000,16 +992,16 @@ class GameScene extends Phaser.Scene {
     const item = (a === this.player) ? b : a;
     switch (item.itemType) {
       case 'item_power':
-        this.powerLevel = Math.min(3, this.powerLevel + 1);
-        this._showPickupMsg('パワーアップ Lv.' + this.powerLevel, '#ffcc00');
+        this.powerLevel = Math.min(5, this.powerLevel + 1);
+        this._showPickupMsg('パワー Lv.' + this.powerLevel, '#ffcc00');
         break;
       case 'item_spread':
-        this.weapon = 'spread';
-        this._showPickupMsg('拡散ショット！', '#ff9800');
+        this.spreadLv = Math.min(4, this.spreadLv + 1);
+        this._showPickupMsg('拡散 Lv.' + this.spreadLv, '#ff9800');
         break;
       case 'item_big':
-        this.weapon = 'big';
-        this._showPickupMsg('大玉ショット！', '#ff80ab');
+        this.bigLv = Math.min(3, this.bigLv + 1);
+        this._showPickupMsg('大玉 Lv.' + this.bigLv, '#ff80ab');
         break;
       case 'item_barrier':
         this.shieldHits = 3;
