@@ -13,10 +13,14 @@ class GameScene extends Phaser.Scene {
   preload() {
     // 読み込み済みならスキップされる
     const load = (k, f) => { if (!this.textures.exists(k)) this.load.image(k, f); };
-    load('bg_kumamoto2', 'img/kumamoto_background2.png');
+    load('bg_kumamoto3', 'img/kumamoto_background3.png');
     load('player_img', 'img/player.png');
     load('enemy_renkon_img', 'img/enemy_renkon.png');
     load('enemy_chip_img', 'img/enemy_IC.png');
+    load('enemy_jintaiko_img', 'img/enemy_jintaiko.png');
+    load('enemy_kingyo_img', 'img/enemy_kingyo.png');
+    load('enemy_kyoryu_img', 'img/enemy_kyoryu.png');
+    load('enemy_uma_img', 'img/enemy_uma.png');
     load('boss1', 'img/boss_fase1.png');
     load('boss2', 'img/boss_fase2.png');
     load('boss3', 'img/boss_fase3.png');
@@ -50,7 +54,7 @@ class GameScene extends Phaser.Scene {
     this._setupTimers();
 
     // 難易度バナー
-    const dt = this.add.text(GW / 2, PLAY_H / 2 - 40, this.diff.label, {
+    const dt = TXT(this, GW / 2, PLAY_H / 2 - 40, this.diff.label, {
       fontSize: '32px', fontFamily: 'sans-serif',
       color: this.diff.color, stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(40);
@@ -105,10 +109,12 @@ class GameScene extends Phaser.Scene {
   }
 
   _texBigBullet() {
-    this._gTex('bullet_big', 20, 24, g => {
-      g.fillStyle(0xff4081, 0.85).fillCircle(10, 12, 9);
-      g.fillStyle(0xffab00, 0.9).fillCircle(10, 12, 5.5);
-      g.fillStyle(0xffffff, 0.95).fillCircle(8, 9, 2.5);
+    // プラズマ大玉
+    this._gTex('bullet_big', 24, 28, g => {
+      g.fillStyle(0xff2d6f, 0.28).fillCircle(12, 14, 12);
+      g.fillStyle(0xff4081, 0.85).fillCircle(12, 14, 8.5);
+      g.fillStyle(0xffd54f, 0.95).fillCircle(12, 14, 4.5);
+      g.fillStyle(0xffffff, 1).fillCircle(10, 12, 2.2);
     });
   }
 
@@ -177,16 +183,20 @@ class GameScene extends Phaser.Scene {
   }
 
   _texBullet() {
-    this._gTex('bullet', 6, 16, g => {
-      g.fillStyle(C.P_BULLET).fillRoundedRect(0, 0, 6, 16, 3);
-      g.fillStyle(0xffffff, 0.7).fillRect(2, 2, 2, 6);
+    // 青白いエネルギー弾（グロー＋白コア）
+    this._gTex('bullet', 10, 24, g => {
+      g.fillStyle(0x00e5ff, 0.30).fillRoundedRect(1, 1, 8, 22, 4); // 外グロー
+      g.fillStyle(0x4df3ff, 0.9).fillRoundedRect(3, 2, 4, 20, 2);  // 本体
+      g.fillStyle(0xffffff, 1).fillRoundedRect(4, 3, 2, 14, 1);    // 白い芯
     });
   }
 
   _texEnemyBullet() {
-    this._gTex('e_bullet', 8, 8, g => {
-      g.fillStyle(C.E_BULLET).fillCircle(4, 4, 4);
-      g.fillStyle(0xff8888, 0.6).fillCircle(3, 3, 2);
+    // 禍々しい赤オーブ（グロー付き）
+    this._gTex('e_bullet', 14, 14, g => {
+      g.fillStyle(0xff1744, 0.28).fillCircle(7, 7, 7);   // 外グロー
+      g.fillStyle(0xff3060, 0.95).fillCircle(7, 7, 4.5); // 本体
+      g.fillStyle(0xffd9d9, 0.95).fillCircle(5.6, 5.6, 1.8); // ハイライト
     });
   }
 
@@ -371,8 +381,8 @@ class GameScene extends Phaser.Scene {
 
   _makeBackground() {
     // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
-    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'bg_kumamoto2').setDepth(0);
-    const s = GW / 853; // 画像幅(853px)をゲーム幅に合わせる
+    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'bg_kumamoto3').setDepth(0);
+    const s = GW / 724; // 画像幅(724px)をゲーム幅に合わせる
     this._bg.tileScaleX = s;
     this._bg.tileScaleY = s;
 
@@ -381,7 +391,7 @@ class GameScene extends Phaser.Scene {
 
     // 操作エリア背景
     this.add.rectangle(GW / 2, GH - CONTROL_H / 2, GW, CONTROL_H, C.CTRL_BG, 0.95).setDepth(20);
-    this.add.text(GW / 2, GH - CONTROL_H + 14, '◀  ここでタッチ操作  ▶', {
+    TXT(this, GW / 2, GH - CONTROL_H + 14, '◀  ここでタッチ操作  ▶', {
       fontSize: '13px', fontFamily: 'sans-serif', color: '#5577aa',
     }).setOrigin(0.5).setDepth(21);
 
@@ -419,17 +429,17 @@ class GameScene extends Phaser.Scene {
 
   _makeUI() {
     // ─ スコア・タイマー（上部）
-    this._scoreText = this.add.text(10, 10, 'SCORE: 0', {
+    this._scoreText = TXT(this, 10, 10, 'SCORE: 0', {
       fontSize: '16px', fontFamily: 'sans-serif', color: '#ffffff',
     }).setDepth(30);
 
-    this._timerText = this.add.text(GW - 10, 10, String(STAGE_DURATION), {
+    this._timerText = TXT(this, GW - 10, 10, String(STAGE_DURATION), {
       fontSize: '24px', fontFamily: 'sans-serif', color: '#ffffff',
     }).setOrigin(1, 0).setDepth(30);
 
     // ─ ボスHPバー（上部・非表示待機）
     this._bossHpContainer = this.add.container(0, 0).setDepth(30).setVisible(false);
-    const bossLabel = this.add.text(GW / 2, 32, '機械くまモン', {
+    const bossLabel = TXT(this, GW / 2, 32, '機械くまモン', {
       fontSize: '13px', fontFamily: 'sans-serif', color: '#ff6666',
     }).setOrigin(0.5);
     const bossHpBg = this.add.rectangle(GW / 2, 46, GW - 40, 12, C.HP_BG).setOrigin(0.5);
@@ -438,27 +448,27 @@ class GameScene extends Phaser.Scene {
 
     // ─ プレイヤーHP（プレイエリア下部）
     const hpY = PLAY_H - 18;
-    this.add.text(10, hpY - 10, 'HP', {
+    TXT(this, 10, hpY - 10, 'HP', {
       fontSize: '12px', fontFamily: 'sans-serif', color: '#aaaaaa',
     }).setDepth(30);
     this._hpBarBg = this.add.rectangle(32, hpY, 110, 11, C.HP_BG).setOrigin(0, 0.5).setDepth(30);
     this._hpBar   = this.add.rectangle(32, hpY, 110, 11, C.HP_GREEN).setOrigin(0, 0.5).setDepth(31);
 
     // パワーレベル表示
-    this._powerText = this.add.text(GW - 10, hpY, 'Lv.1', {
+    this._powerText = TXT(this, GW - 10, hpY, 'Lv.1', {
       fontSize: '14px', fontFamily: 'sans-serif', color: '#ffcc00',
     }).setOrigin(1, 0.5).setDepth(30);
 
-    // コンボ
-    this._comboText = this.add.text(GW / 2, PLAY_H / 2, '', {
-      fontSize: '28px', fontFamily: 'sans-serif', color: '#ffcc00',
-      stroke: '#000000', strokeThickness: 3,
+    // コンボ（画面中央だと邪魔なので上部に小さく）
+    this._comboText = TXT(this, GW / 2, 100, '', {
+      fontSize: '19px', fontFamily: 'sans-serif', color: '#ffcc00',
+      stroke: '#000000', strokeThickness: 4, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(35).setAlpha(0);
     this._combo = 0;
     this._comboTimer = null;
 
     // ピックアップメッセージ
-    this._pickupText = this.add.text(GW / 2, PLAY_H - 50, '', {
+    this._pickupText = TXT(this, GW / 2, PLAY_H - 50, '', {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#ffcc00',
       stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(36).setAlpha(0);
@@ -544,8 +554,9 @@ class GameScene extends Phaser.Scene {
     const x = Phaser.Math.Between(cfg.w / 2 + 10, GW - cfg.w / 2 - 10);
     const y = -cfg.h / 2 - 10;
 
-    const isImg = !!ENEMY_IMG[type];
-    const e = this.enemies.create(x, y, isImg ? ENEMY_IMG[type] : 'enemy_' + type);
+    const imgInfo = ENEMY_IMG[type];
+    const isImg = !!imgInfo;
+    const e = this.enemies.create(x, y, isImg ? imgInfo.key : 'enemy_' + type);
     e.setDepth(8);
     e.enemyType = type;
     e.hp = Math.max(1, Math.round(cfg.hp * this.diff.enemyHpMul));
@@ -555,10 +566,12 @@ class GameScene extends Phaser.Scene {
     e.baseX = x;
 
     if (isImg) {
-      // 画像は大きいので表示サイズを cfg に合わせ、当たり判定は表示の約7割に
+      // 表示サイズを cfg に合わせ、当たり判定は画像内の中身(cw/ch)に合わせて中央配置
       e.setDisplaySize(cfg.w, cfg.h);
-      e.body.setSize(e.width * 0.7, e.height * 0.7);
-      e.body.setOffset(e.width * 0.15, e.height * 0.15);
+      const k = 0.82;
+      const fw = e.width, fh = e.height;
+      e.body.setSize(fw * imgInfo.cw * k, fh * imgInfo.ch * k);
+      e.body.setOffset(fw * (1 - imgInfo.cw * k) / 2, fh * (1 - imgInfo.ch * k) / 2);
     } else {
       e.body.setSize(cfg.w * 0.8, cfg.h * 0.8);
     }
@@ -601,19 +614,29 @@ class GameScene extends Phaser.Scene {
 
   _startBoss() {
     this.bossActive = true;
+    this._bossY = 195; // HPゲージに被らない待機位置
     Object.values(this.waveTimers).forEach(t => t && t.remove());
     this.enemies.clear(true, true);
 
-    const txt = this.add.text(GW / 2, PLAY_H / 2, '機械くまモン\n出現!!', {
-      fontSize: '28px', fontFamily: 'sans-serif', color: '#ff4444',
-      stroke: '#000', strokeThickness: 4, align: 'center',
-    }).setOrigin(0.5).setDepth(40);
-    this.tweens.add({ targets: txt, alpha: 0, delay: 2000, duration: 600,
-      onComplete: () => txt.destroy() });
+    // 荘厳な暗転＋長めの地響き
+    const veil = this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000000, 0).setDepth(38);
+    this.tweens.add({ targets: veil, alpha: 0.5, duration: 800, yoyo: true, hold: 1400,
+      onComplete: () => veil.destroy() });
+    this.cameras.main.shake(2600, 0.005);
 
-    this.boss = this.physics.add.sprite(GW / 2, -90, 'boss1');
+    // 警告演出
+    const warn = TXT(this, GW / 2, PLAY_H / 2 - 34, '⚠ W A R N I N G ⚠', {
+      fontSize: '24px', color: '#ff3355', stroke: '#000', strokeThickness: 5, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(40).setAlpha(0);
+    const nm = TXT(this, GW / 2, PLAY_H / 2 + 6, '機械くまモン 降臨', {
+      fontSize: '30px', color: '#ffffff', stroke: '#aa0000', strokeThickness: 5, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(40).setAlpha(0);
+    this.tweens.add({ targets: [warn, nm], alpha: 1, duration: 450, yoyo: true, hold: 1700, delay: 250,
+      onComplete: () => { warn.destroy(); nm.destroy(); } });
+
+    this.boss = this.physics.add.sprite(GW / 2, -120, 'boss1');
     this.boss.setDepth(9);
-    this.boss.setDisplaySize(160, 160);
+    this.boss.setDisplaySize(172, 172);
     this.boss.body.setSize(this.boss.width * 0.62, this.boss.height * 0.56);
     this.boss.body.setOffset(this.boss.width * 0.19, this.boss.height * 0.22);
     this.boss.bossHP = this.bossMaxHP;
@@ -621,21 +644,23 @@ class GameScene extends Phaser.Scene {
     this.boss.elapsed = 0;
     this.boss.lastShot = 0;
     this.boss.lastCharge = 0;
-    this.boss.setVelocityY(80);
+    this.boss.entering = true; // 降臨中は_updateBossで動かさない
     this.bossGroup.add(this.boss);
     this._bossHpContainer.setVisible(true);
 
-    this.time.delayedCall(1800, () => {
-      if (this.boss && this.boss.active) {
-        this.boss.setVelocityY(0);
-        this.boss.y = 100;
-      }
+    // ジワーッと降臨（ゆっくりイージング）
+    this.tweens.add({
+      targets: this.boss, y: this._bossY, duration: 2800, ease: 'Sine.easeInOut', delay: 500,
+      onComplete: () => {
+        if (this.boss) { this.boss.entering = false; this.cameras.main.shake(320, 0.012); }
+      },
     });
   }
 
   _updateBoss(time, delta) {
     if (!this.bossActive || !this.boss || !this.boss.active) return;
     const b = this.boss;
+    if (b.entering) return; // 降臨演出中は制御しない
     b.elapsed += delta;
 
     const hpRatio = b.bossHP / this.bossMaxHP;
@@ -651,9 +676,9 @@ class GameScene extends Phaser.Scene {
     }
 
     const freq = b.phase === 1 ? 0.8 : b.phase === 2 ? 1.2 : 1.5;
-    const amp  = b.phase === 3 ? 160 : 130;
+    const amp  = b.phase === 3 ? 150 : 120;
     b.x = GW / 2 + Math.sin(b.elapsed / 1000 * freq) * amp;
-    b.y = b.phase < 3 ? 100 : 90 + Math.sin(b.elapsed / 700) * 20;
+    b.y = b.phase < 3 ? this._bossY : (this._bossY - 8) + Math.sin(b.elapsed / 700) * 18;
 
     const shootInterval = (b.phase === 1 ? 2200 : b.phase === 2 ? 1600 : 1100) * this.diff.shootIntervalMul;
     if (time - b.lastShot > shootInterval) {
@@ -703,7 +728,7 @@ class GameScene extends Phaser.Scene {
   }
 
   _bossPhaseBanner(msg) {
-    const txt = this.add.text(GW / 2, PLAY_H / 2 - 40, msg, {
+    const txt = TXT(this, GW / 2, PLAY_H / 2 - 40, msg, {
       fontSize: '22px', fontFamily: 'sans-serif', color: '#ff6600',
       stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(40);

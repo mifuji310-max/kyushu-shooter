@@ -9,7 +9,19 @@ const PLAY_H = GH - CONTROL_H;
 // 実バッファだけを高解像度化する（座標系は不変）。
 const DPR = Math.min(window.devicePixelRatio || 1, 3);
 
-const VERSION = 'v0.3.2';
+// 全テキスト共通のフォント（少し引き締まった見た目に）
+const FONT = '"Trebuchet MS", "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif';
+
+// テキスト生成ヘルパー: 解像度をDPR以上にして「滲み」を解消し、既定フォントを適用。
+// 各シーンで this.add.text(...) の代わりに TXT(this, ...) を使う。
+function TXT(scene, x, y, str, style) {
+  style = Object.assign({}, style || {});
+  if (style.resolution === undefined) style.resolution = Math.max(2, Math.ceil(DPR));
+  if (!style.fontFamily || style.fontFamily === 'sans-serif') style.fontFamily = FONT;
+  return scene.add.text(x, y, str, style);
+}
+
+const VERSION = 'v0.3.3';
 
 // カラーパレット
 const C = {
@@ -78,20 +90,24 @@ const WAVE_SCHEDULE = [
   { startTime: 27, type: 'uma',      interval: 800  },
 ];
 
-// 敵パラメータ（w/h は表示・当たり判定・出現位置の基準サイズ）
+// 敵パラメータ（w/h は表示・出現位置の基準サイズ＝正方フレーム）
 const ENEMY_CFG = {
-  renkon:   { hp: 2,  score: 100, w: 38, h: 38, speed: 110, label: '辛子蓮根' },
-  jintaiko: { hp: 6,  score: 200, w: 38, h: 30, speed: 75,  label: '陣太鼓',  shootInterval: 2800 },
-  kingyo:   { hp: 2,  score: 130, w: 36, h: 24, speed: 135, label: '金魚' },
-  chip:     { hp: 4,  score: 180, w: 36, h: 36, speed: 230, label: '半導体' },
-  kyoryu:   { hp: 8,  score: 300, w: 44, h: 40, speed: 90,  label: '恐竜', shootInterval: 3200 },
-  uma:      { hp: 3,  score: 250, w: 34, h: 46, speed: 290, label: '馬' },
+  renkon:   { hp: 2,  score: 100, w: 40, h: 40, speed: 110, label: '辛子蓮根' },
+  jintaiko: { hp: 6,  score: 200, w: 46, h: 46, speed: 75,  label: '陣太鼓',  shootInterval: 2800 },
+  kingyo:   { hp: 2,  score: 130, w: 44, h: 44, speed: 135, label: '金魚' },
+  chip:     { hp: 4,  score: 180, w: 38, h: 38, speed: 230, label: '半導体' },
+  kyoryu:   { hp: 8,  score: 300, w: 52, h: 52, speed: 90,  label: '恐竜', shootInterval: 3200 },
+  uma:      { hp: 3,  score: 250, w: 50, h: 50, speed: 290, label: '馬' },
 };
 
-// 画像を使う敵（それ以外は図形生成テクスチャ）
+// 画像を使う敵（cw/ch は画像内の中身の占有率＝当たり判定の基準）
 const ENEMY_IMG = {
-  renkon: 'enemy_renkon_img',
-  chip:   'enemy_chip_img',
+  renkon:   { key: 'enemy_renkon_img',   cw: 0.81, ch: 0.76 },
+  chip:     { key: 'enemy_chip_img',     cw: 0.68, ch: 0.68 },
+  jintaiko: { key: 'enemy_jintaiko_img', cw: 0.88, ch: 0.75 },
+  kingyo:   { key: 'enemy_kingyo_img',   cw: 0.63, ch: 0.82 },
+  kyoryu:   { key: 'enemy_kyoryu_img',   cw: 0.42, ch: 0.97 },
+  uma:      { key: 'enemy_uma_img',      cw: 0.35, ch: 0.94 },
 };
 
 const BOSS_MAX_HP = 200;   // NORMAL基準（難易度で上書き）

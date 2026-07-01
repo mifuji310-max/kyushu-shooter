@@ -22,17 +22,15 @@ class TitleScene extends Phaser.Scene {
       });
     }
 
-    // タイトルロゴ画像（黒背景はSCREEN合成で透過させ星空に重ねる）
-    this.add.image(GW / 2, 120, 'title_logo')
-      .setScale(0.25)
-      .setBlendMode(Phaser.BlendModes.SCREEN);
+    // タイトルロゴ画像（背景透過済み。通常合成で星空に重ねる）
+    this.add.image(GW / 2, 118, 'title_logo').setScale(0.26);
 
-    this.add.text(GW / 2, 212, '熊本ステージ', {
+    TXT(this, GW / 2, 212, '熊本ステージ', {
       fontSize: '20px', fontFamily: 'sans-serif', color: '#ffcc00',
     }).setOrigin(0.5);
 
     // ─ 難易度選択 ─
-    this.add.text(GW / 2, 250, '難易度を選択', {
+    TXT(this, GW / 2, 250, '難易度を選択', {
       fontSize: '16px', fontFamily: 'sans-serif', color: '#cccccc',
     }).setOrigin(0.5);
 
@@ -46,7 +44,7 @@ class TitleScene extends Phaser.Scene {
     });
 
     // 難易度の説明文
-    this._descText = this.add.text(GW / 2, 396, '', {
+    this._descText = TXT(this, GW / 2, 396, '', {
       fontSize: '13px', fontFamily: 'sans-serif', color: '#99aacc',
     }).setOrigin(0.5);
 
@@ -56,7 +54,7 @@ class TitleScene extends Phaser.Scene {
     this._startBtn = this.add.container(GW / 2, 462);
     const btnBg = this.add.rectangle(0, 0, 240, 56, 0x113322)
       .setStrokeStyle(2, 0x44ff88);
-    const btnTxt = this.add.text(0, 0, '▶ ゲームスタート', {
+    const btnTxt = TXT(this, 0, 0, '▶ ゲームスタート', {
       fontSize: '22px', fontFamily: 'sans-serif', color: '#aaffcc',
     }).setOrigin(0.5);
     this._startBtn.add([btnBg, btnTxt]);
@@ -69,19 +67,19 @@ class TitleScene extends Phaser.Scene {
 
     // ハイスコア
     const hi = this._getBestScore();
-    this.add.text(GW / 2, 520, `BEST: ${hi.toLocaleString()}`, {
+    TXT(this, GW / 2, 520, `BEST: ${hi.toLocaleString()}`, {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#aaaaaa',
     }).setOrigin(0.5);
 
     // ランキングボタン
-    const rankBtn = this.add.text(GW / 2, 556, '[ ランキングを見る ]', {
+    const rankBtn = TXT(this, GW / 2, 556, '[ ランキングを見る ]', {
       fontSize: '15px', fontFamily: 'sans-serif', color: '#ffcc88',
       padding: { x: 8, y: 4 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     rankBtn.on('pointerdown', () => this.scene.start('LeaderboardScene'));
 
     // バージョン
-    this.add.text(GW - 8, GH - 8, VERSION, {
+    TXT(this, GW - 8, GH - 8, VERSION, {
       fontSize: '12px', fontFamily: 'sans-serif', color: '#555555',
     }).setOrigin(1, 1);
 
@@ -93,7 +91,7 @@ class TitleScene extends Phaser.Scene {
     const d = DIFFICULTY[key];
     const cont = this.add.container(x, y);
     const bg = this.add.rectangle(0, 0, 130, 44, 0x111133).setStrokeStyle(2, 0x333355);
-    const txt = this.add.text(0, 0, d.label, {
+    const txt = TXT(this, 0, 0, d.label, {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#888888',
     }).setOrigin(0.5);
     cont.add([bg, txt]);

@@ -23,17 +23,17 @@ class GameOverScene extends Phaser.Scene {
     const titleColor = this._cleared ? '#ffcc00' : '#ff4444';
     const titleText  = this._cleared ? 'STAGE CLEAR!' : 'GAME OVER';
 
-    this.add.text(GW / 2, 100, titleText, {
+    TXT(this, GW / 2, 100, titleText, {
       fontSize: '40px', fontFamily: 'sans-serif',
       color: titleColor, stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5);
 
-    this.add.text(GW / 2, 170, `SCORE: ${this._score.toLocaleString()}`, {
+    TXT(this, GW / 2, 170, `SCORE: ${this._score.toLocaleString()}`, {
       fontSize: '26px', fontFamily: 'sans-serif', color: '#ffffff',
     }).setOrigin(0.5);
 
     if (this._cleared) {
-      this.add.text(GW / 2, 210, '+ ボーナス 10,000点', {
+      TXT(this, GW / 2, 210, '+ ボーナス 10,000点', {
         fontSize: '16px', fontFamily: 'sans-serif', color: '#aaffaa',
       }).setOrigin(0.5);
     }
@@ -42,18 +42,18 @@ class GameOverScene extends Phaser.Scene {
     const best = this._getBestScore();
     const isNewRecord = this._score >= best;
     if (isNewRecord) {
-      const rec = this.add.text(GW / 2, 248, '★ NEW RECORD! ★', {
+      const rec = TXT(this, GW / 2, 248, '★ NEW RECORD! ★', {
         fontSize: '20px', fontFamily: 'sans-serif', color: '#ffcc00',
       }).setOrigin(0.5);
       this.tweens.add({ targets: rec, scaleX: 1.1, scaleY: 1.1, yoyo: true, repeat: -1, duration: 500 });
     } else {
-      this.add.text(GW / 2, 248, `BEST: ${best.toLocaleString()}`, {
+      TXT(this, GW / 2, 248, `BEST: ${best.toLocaleString()}`, {
         fontSize: '18px', fontFamily: 'sans-serif', color: '#aaaaaa',
       }).setOrigin(0.5);
     }
 
     // ニックネーム入力エリア
-    this.add.text(GW / 2, 300, 'ニックネームを入力', {
+    TXT(this, GW / 2, 300, 'ニックネームを入力', {
       fontSize: '16px', fontFamily: 'sans-serif', color: '#cccccc',
     }).setOrigin(0.5);
 
@@ -61,7 +61,7 @@ class GameOverScene extends Phaser.Scene {
     this._nameInput = this._createInputOverlay();
 
     // 登録ボタン
-    this._submitBtn = this.add.text(GW / 2, 420, '[ スコアを登録 ]', {
+    this._submitBtn = TXT(this, GW / 2, 420, '[ スコアを登録 ]', {
       fontSize: '20px', fontFamily: 'sans-serif',
       color: '#00ccff', backgroundColor: '#001133',
       padding: { x: 14, y: 8 },
@@ -72,19 +72,19 @@ class GameOverScene extends Phaser.Scene {
     this._submitBtn.on('pointerdown', () => this._submit());
 
     // ボタン群
-    const retryBtn = this.add.text(GW / 2 - 80, 490, '[ もう一度 ]', {
+    const retryBtn = TXT(this, GW / 2 - 80, 490, '[ もう一度 ]', {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#aaffaa',
       padding: { x: 10, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     retryBtn.on('pointerdown', () => { this._cleanup(); this.scene.start('GameScene'); });
 
-    const rankBtn = this.add.text(GW / 2 + 80, 490, '[ ランキング ]', {
+    const rankBtn = TXT(this, GW / 2 + 80, 490, '[ ランキング ]', {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#ffcc88',
       padding: { x: 10, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     rankBtn.on('pointerdown', () => { this._cleanup(); this.scene.start('LeaderboardScene'); });
 
-    const titleBtn = this.add.text(GW / 2, 540, '[ タイトルへ ]', {
+    const titleBtn = TXT(this, GW / 2, 540, '[ タイトルへ ]', {
       fontSize: '16px', fontFamily: 'sans-serif', color: '#888888',
       padding: { x: 10, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -102,42 +102,47 @@ class GameOverScene extends Phaser.Scene {
   }
 
   _createInputOverlay() {
-    // Phaser の上に HTML input を重ねる
-    const canvas  = this.game.canvas;
-    const rect    = canvas.getBoundingClientRect();
-    const scaleX  = rect.width  / GW;
-    const scaleY  = rect.height / GH;
-
-    // 入力フィールドの背景
+    // 入力フィールドの背景（見た目）
     this.add.rectangle(GW / 2, 358, 240, 38, 0x111133).setStrokeStyle(1, 0x4466cc);
-    this.add.text(GW / 2, 360, '（ここに表示されます）', {
-      fontSize: '14px', fontFamily: 'sans-serif', color: '#666688',
-    }).setOrigin(0.5).setName('placeholder');
 
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.maxLength = 16;
     inp.placeholder = 'ニックネーム';
     inp.style.cssText = [
-      `position:fixed`,
-      `left:${rect.left + (GW / 2 - 112) * scaleX}px`,
-      `top:${rect.top  + 340 * scaleY}px`,
-      `width:${224 * scaleX}px`,
-      `height:${36 * scaleY}px`,
-      `font-size:${16 * Math.min(scaleX, scaleY)}px`,
-      `text-align:center`,
-      `background:#1a1a44`,
-      `color:#ffffff`,
-      `border:1px solid #4466cc`,
-      `border-radius:4px`,
-      `padding:2px 8px`,
-      `outline:none`,
-      `z-index:999`,
+      'position:fixed', 'text-align:center', 'background:#1a1a44', 'color:#ffffff',
+      'border:1px solid #4466cc', 'border-radius:4px', 'padding:2px 8px',
+      'outline:none', 'z-index:999',
     ].join(';');
-
     document.body.appendChild(inp);
-    inp.focus();
+    this._nameInput = inp;
+
+    // キーボード表示や画面スクロールで位置がズレないよう、都度キャンバス基準で再配置
+    this._positionInput();
+    this._repos = () => this._positionInput();
+    window.addEventListener('resize', this._repos);
+    window.addEventListener('scroll', this._repos, true);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', this._repos);
+      window.visualViewport.addEventListener('scroll', this._repos);
+    }
+    // フォーカス直後（キーボード出現時）にも数回追従
+    inp.addEventListener('focus', () => [50, 300, 600].forEach(d => setTimeout(this._repos, d)));
+    setTimeout(() => inp.focus(), 60);
     return inp;
+  }
+
+  // キャンバスの現在位置に合わせて input を配置し直す
+  _positionInput() {
+    const inp = this._nameInput;
+    if (!inp) return;
+    const rect = this.game.canvas.getBoundingClientRect();
+    const scaleX = rect.width / GW, scaleY = rect.height / GH;
+    inp.style.left   = (rect.left + (GW / 2 - 112) * scaleX) + 'px';
+    inp.style.top    = (rect.top + 340 * scaleY) + 'px';
+    inp.style.width  = (224 * scaleX) + 'px';
+    inp.style.height = (36 * scaleY) + 'px';
+    inp.style.fontSize = (16 * Math.min(scaleX, scaleY)) + 'px';
   }
 
   _submit() {
@@ -187,6 +192,15 @@ class GameOverScene extends Phaser.Scene {
   }
 
   _cleanup() {
+    if (this._repos) {
+      window.removeEventListener('resize', this._repos);
+      window.removeEventListener('scroll', this._repos, true);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', this._repos);
+        window.visualViewport.removeEventListener('scroll', this._repos);
+      }
+      this._repos = null;
+    }
     if (this._nameInput && this._nameInput.parentNode) {
       this._nameInput.parentNode.removeChild(this._nameInput);
     }

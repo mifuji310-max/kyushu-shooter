@@ -17,28 +17,28 @@ class LeaderboardScene extends Phaser.Scene {
       });
     }
 
-    this.add.text(GW / 2, 28, 'RANKING', {
+    TXT(this, GW / 2, 28, 'RANKING', {
       fontSize: '28px', fontFamily: 'sans-serif',
       color: '#ffcc00', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5);
 
-    this.add.text(GW / 2, 54, `熊本ステージ ${VERSION}`, {
+    TXT(this, GW / 2, 54, `熊本ステージ ${VERSION}`, {
       fontSize: '13px', fontFamily: 'sans-serif', color: '#666688',
     }).setOrigin(0.5);
 
     // オンライン/オフライン表示
-    this._statusText = this.add.text(GW / 2, 74, '', {
+    this._statusText = TXT(this, GW / 2, 74, '', {
       fontSize: '12px', fontFamily: 'sans-serif', color: '#8899bb',
     }).setOrigin(0.5);
 
     // ボタン
-    const retry = this.add.text(GW / 2 - 80, GH - 50, '[ もう一度 ]', {
+    const retry = TXT(this, GW / 2 - 80, GH - 50, '[ もう一度 ]', {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#aaffaa',
       padding: { x: 8, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     retry.on('pointerdown', () => this.scene.start('GameScene'));
 
-    const title = this.add.text(GW / 2 + 80, GH - 50, '[ タイトル ]', {
+    const title = TXT(this, GW / 2 + 80, GH - 50, '[ タイトル ]', {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#aaaaff',
       padding: { x: 8, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -48,7 +48,7 @@ class LeaderboardScene extends Phaser.Scene {
     let local = this._dedupe(JSON.parse(localStorage.getItem('kyushu_scores') || '[]'));
     localStorage.setItem('kyushu_scores', JSON.stringify(local));
 
-    this._loadingText = this.add.text(GW / 2, GH / 2, '読み込み中...', {
+    this._loadingText = TXT(this, GW / 2, GH / 2, '読み込み中...', {
       fontSize: '16px', fontFamily: 'sans-serif', color: '#8888aa',
     }).setOrigin(0.5);
 
@@ -70,7 +70,7 @@ class LeaderboardScene extends Phaser.Scene {
       .setColor(online ? '#66ddaa' : '#8899bb');
 
     if (!list || list.length === 0) {
-      this.add.text(GW / 2, GH / 2, 'まだスコアがありません', {
+      TXT(this, GW / 2, GH / 2, 'まだスコアがありません', {
         fontSize: '16px', fontFamily: 'sans-serif', color: '#666666',
       }).setOrigin(0.5);
       return;
@@ -117,7 +117,7 @@ class LeaderboardScene extends Phaser.Scene {
       // 順位
       const rankColor = rank <= 3 ? rankColors[rank - 1] : '#888888';
       const rankStr = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : `${rank}.`;
-      this.add.text(20, y + 8, rankStr, {
+      TXT(this, 20, y + 8, rankStr, {
         fontSize: rank <= 3 ? '22px' : '18px',
         fontFamily: 'sans-serif',
         color: rankColor,
@@ -125,13 +125,13 @@ class LeaderboardScene extends Phaser.Scene {
 
       // 名前
       const name = entry.name || '名無し';
-      this.add.text(62, y + 6, name, {
+      TXT(this, 62, y + 6, name, {
         fontSize: '18px', fontFamily: 'sans-serif',
         color: isHi ? '#ffffff' : '#cccccc',
       });
 
       // スコア
-      this.add.text(GW - 18, y + 6, entry.score.toLocaleString(), {
+      TXT(this, GW - 18, y + 6, entry.score.toLocaleString(), {
         fontSize: '20px', fontFamily: 'sans-serif',
         color: isHi ? '#ffcc00' : '#ffffff',
       }).setOrigin(1, 0);
@@ -143,11 +143,11 @@ class LeaderboardScene extends Phaser.Scene {
       const diff = entry.difficulty ? entry.difficulty + ' ' : '';
       const diffColor = entry.difficulty && DIFFICULTY[entry.difficulty]
         ? DIFFICULTY[entry.difficulty].color : '#555577';
-      this.add.text(62, y + 28, `${date}  ${entry.version || ''}`, {
+      TXT(this, 62, y + 28, `${date}  ${entry.version || ''}`, {
         fontSize: '11px', fontFamily: 'sans-serif', color: '#555577',
       });
       if (diff) {
-        this.add.text(GW - 18, y + 30, diff.trim(), {
+        TXT(this, GW - 18, y + 30, diff.trim(), {
           fontSize: '11px', fontFamily: 'sans-serif', color: diffColor,
         }).setOrigin(1, 0);
       }
