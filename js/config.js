@@ -9,7 +9,7 @@ const PLAY_H = GH - CONTROL_H;
 // 実バッファだけを高解像度化する（座標系は不変）。
 const DPR = Math.min(window.devicePixelRatio || 1, 3);
 
-const VERSION = 'v0.3.0';
+const VERSION = 'v0.3.1';
 
 // カラーパレット
 const C = {
@@ -78,14 +78,20 @@ const WAVE_SCHEDULE = [
   { startTime: 27, type: 'uma',      interval: 800  },
 ];
 
-// 敵パラメータ
+// 敵パラメータ（w/h は表示・当たり判定・出現位置の基準サイズ）
 const ENEMY_CFG = {
-  renkon:   { hp: 2,  score: 100, w: 32, h: 32, speed: 110, label: '辛子蓮根' },
+  renkon:   { hp: 2,  score: 100, w: 38, h: 38, speed: 110, label: '辛子蓮根' },
   jintaiko: { hp: 6,  score: 200, w: 38, h: 30, speed: 75,  label: '陣太鼓',  shootInterval: 2800 },
   kingyo:   { hp: 2,  score: 130, w: 36, h: 24, speed: 135, label: '金魚' },
-  chip:     { hp: 4,  score: 180, w: 36, h: 26, speed: 230, label: '半導体' },
+  chip:     { hp: 4,  score: 180, w: 36, h: 36, speed: 230, label: '半導体' },
   kyoryu:   { hp: 8,  score: 300, w: 44, h: 40, speed: 90,  label: '恐竜', shootInterval: 3200 },
   uma:      { hp: 3,  score: 250, w: 34, h: 46, speed: 290, label: '馬' },
+};
+
+// 画像を使う敵（それ以外は図形生成テクスチャ）
+const ENEMY_IMG = {
+  renkon: 'enemy_renkon_img',
+  chip:   'enemy_chip_img',
 };
 
 const BOSS_MAX_HP = 200;   // NORMAL基準（難易度で上書き）

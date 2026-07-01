@@ -12,12 +12,14 @@ class GameScene extends Phaser.Scene {
 
   preload() {
     // 読み込み済みならスキップされる
-    if (!this.textures.exists('bg_kumamoto')) {
-      this.load.image('bg_kumamoto', 'img/kumamoto_background.png');
-    }
-    if (!this.textures.exists('player_img')) {
-      this.load.image('player_img', 'img/player.png');
-    }
+    const load = (k, f) => { if (!this.textures.exists(k)) this.load.image(k, f); };
+    load('bg_kumamoto2', 'img/kumamoto_background2.png');
+    load('player_img', 'img/player.png');
+    load('enemy_renkon_img', 'img/enemy_renkon.png');
+    load('enemy_chip_img', 'img/enemy_IC.png');
+    load('boss1', 'img/boss_fase1.png');
+    load('boss2', 'img/boss_fase2.png');
+    load('boss3', 'img/boss_fase3.png');
   }
 
   create() {
@@ -369,8 +371,8 @@ class GameScene extends Phaser.Scene {
 
   _makeBackground() {
     // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
-    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'bg_kumamoto').setDepth(0);
-    const s = GW / 724; // 画像幅(724px)をゲーム幅に合わせる
+    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'bg_kumamoto2').setDepth(0);
+    const s = GW / 853; // 画像幅(853px)をゲーム幅に合わせる
     this._bg.tileScaleX = s;
     this._bg.tileScaleY = s;
 
@@ -542,7 +544,8 @@ class GameScene extends Phaser.Scene {
     const x = Phaser.Math.Between(cfg.w / 2 + 10, GW - cfg.w / 2 - 10);
     const y = -cfg.h / 2 - 10;
 
-    const e = this.enemies.create(x, y, 'enemy_' + type);
+    const isImg = !!ENEMY_IMG[type];
+    const e = this.enemies.create(x, y, isImg ? ENEMY_IMG[type] : 'enemy_' + type);
     e.setDepth(8);
     e.enemyType = type;
     e.hp = Math.max(1, Math.round(cfg.hp * this.diff.enemyHpMul));
@@ -550,7 +553,15 @@ class GameScene extends Phaser.Scene {
     e.elapsed = 0;
     e.lastShot = 0;
     e.baseX = x;
-    e.body.setSize(cfg.w * 0.8, cfg.h * 0.8);
+
+    if (isImg) {
+      // 画像は大きいので表示サイズを cfg に合わせ、当たり判定は表示の約7割に
+      e.setDisplaySize(cfg.w, cfg.h);
+      e.body.setSize(e.width * 0.7, e.height * 0.7);
+      e.body.setOffset(e.width * 0.15, e.height * 0.15);
+    } else {
+      e.body.setSize(cfg.w * 0.8, cfg.h * 0.8);
+    }
 
     const sp = cfg.speed * this.diff.enemySpeedMul; // 難易度で速度補正
 
@@ -600,8 +611,11 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: txt, alpha: 0, delay: 2000, duration: 600,
       onComplete: () => txt.destroy() });
 
-    this.boss = this.physics.add.sprite(GW / 2, -70, 'boss');
+    this.boss = this.physics.add.sprite(GW / 2, -90, 'boss1');
     this.boss.setDepth(9);
+    this.boss.setDisplaySize(160, 160);
+    this.boss.body.setSize(this.boss.width * 0.62, this.boss.height * 0.56);
+    this.boss.body.setOffset(this.boss.width * 0.19, this.boss.height * 0.22);
     this.boss.bossHP = this.bossMaxHP;
     this.boss.phase = 1;
     this.boss.elapsed = 0;
@@ -627,10 +641,12 @@ class GameScene extends Phaser.Scene {
     const hpRatio = b.bossHP / this.bossMaxHP;
     if (hpRatio <= 0.5 && b.phase === 1) {
       b.phase = 2;
+      b.setTexture('boss2'); // 表示サイズ(scale)は維持される
       this._bossPhaseBanner('フェーズ2');
     }
     if (hpRatio <= 0.25 && b.phase === 2) {
       b.phase = 3;
+      b.setTexture('boss3');
       this._bossPhaseBanner('フェーズ3（最終）');
     }
 
