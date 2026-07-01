@@ -9,7 +9,7 @@ const PLAY_H = GH - CONTROL_H;
 // 実バッファだけを高解像度化する（座標系は不変）。
 const DPR = Math.min(window.devicePixelRatio || 1, 3);
 
-const VERSION = 'v0.2.3';
+const VERSION = 'v0.3.0';
 
 // カラーパレット
 const C = {

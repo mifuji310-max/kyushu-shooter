@@ -156,13 +156,34 @@ class GameOverScene extends Phaser.Scene {
     if (entry) {
       entry.name = name;
     } else {
-      scores.push({ id: 'g' + Date.now(), score: this._score, name, version: VERSION, date: new Date().toISOString() });
+      entry = { id: 'g' + Date.now(), score: this._score, name, version: VERSION,
+        difficulty: this.registry.get('difficulty') || '', date: new Date().toISOString() };
+      scores.push(entry);
     }
     scores.sort((a, b) => b.score - a.score);
     localStorage.setItem('kyushu_scores', JSON.stringify(scores.slice(0, 100)));
 
-    this._cleanup();
-    this.scene.start('LeaderboardScene', { highlight: this._score });
+    // 共有ランキングへ送信（オフライン/失敗時はローカルのみで続行）
+    let navigated = false;
+    const go = () => {
+      if (navigated) return;
+      navigated = true;
+      this._cleanup();
+      this.scene.start('LeaderboardScene', { highlight: this._score });
+    };
+
+    const remoteEntry = {
+      name, score: this._score, version: entry.version || VERSION,
+      difficulty: entry.difficulty || '', date: entry.date || new Date().toISOString(),
+    };
+
+    if (typeof RemoteScores !== 'undefined' && RemoteScores.available) {
+      this._submitBtn.setText('[ 登録中... ]').disableInteractive();
+      RemoteScores.submit(remoteEntry).then(go).catch(go);
+      this.time.delayedCall(4000, go); // 通信が遅い場合の保険
+    } else {
+      go();
+    }
   }
 
   _cleanup() {

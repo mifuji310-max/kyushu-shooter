@@ -22,14 +22,14 @@ class LeaderboardScene extends Phaser.Scene {
       color: '#ffcc00', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5);
 
-    this.add.text(GW / 2, 58, `熊本ステージ ${VERSION}`, {
+    this.add.text(GW / 2, 54, `熊本ステージ ${VERSION}`, {
       fontSize: '13px', fontFamily: 'sans-serif', color: '#666688',
     }).setOrigin(0.5);
 
-    let scores = JSON.parse(localStorage.getItem('kyushu_scores') || '[]');
-    scores = this._dedupe(scores);
-    localStorage.setItem('kyushu_scores', JSON.stringify(scores)); // 掃除結果を保存
-    this._drawRankings(scores);
+    // オンライン/オフライン表示
+    this._statusText = this.add.text(GW / 2, 74, '', {
+      fontSize: '12px', fontFamily: 'sans-serif', color: '#8899bb',
+    }).setOrigin(0.5);
 
     // ボタン
     const retry = this.add.text(GW / 2 - 80, GH - 50, '[ もう一度 ]', {
@@ -44,12 +44,38 @@ class LeaderboardScene extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     title.on('pointerdown', () => this.scene.start('TitleScene'));
 
-    // スコアなし
-    if (scores.length === 0) {
+    // ローカルは常に掃除して保持（オフライン用フォールバック）
+    let local = this._dedupe(JSON.parse(localStorage.getItem('kyushu_scores') || '[]'));
+    localStorage.setItem('kyushu_scores', JSON.stringify(local));
+
+    this._loadingText = this.add.text(GW / 2, GH / 2, '読み込み中...', {
+      fontSize: '16px', fontFamily: 'sans-serif', color: '#8888aa',
+    }).setOrigin(0.5);
+
+    // 共有ランキングを優先取得。取れなければローカルを表示
+    if (typeof RemoteScores !== 'undefined' && RemoteScores.available) {
+      RemoteScores.fetchTop(20).then(remote => {
+        if (remote) this._render(remote, true);
+        else this._render(local, false);
+      });
+    } else {
+      this._render(local, false);
+    }
+  }
+
+  _render(list, online) {
+    if (this._loadingText) { this._loadingText.destroy(); this._loadingText = null; }
+    this._statusText
+      .setText(online ? '🌐 オンライン共有ランキング' : '📱 端末内ランキング（オフライン）')
+      .setColor(online ? '#66ddaa' : '#8899bb');
+
+    if (!list || list.length === 0) {
       this.add.text(GW / 2, GH / 2, 'まだスコアがありません', {
         fontSize: '16px', fontFamily: 'sans-serif', color: '#666666',
       }).setOrigin(0.5);
+      return;
     }
+    this._drawRankings(list);
   }
 
   update() {

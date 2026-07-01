@@ -95,6 +95,20 @@ EASY / NORMAL / HARD / EXTREME の4段階。選択は `registry` に保存しリ
 - **`index.html` の各scriptタグの `?v=` も VERSION と同じ値に揃える**
   （スマホのキャッシュを確実に更新するためのバスター。揃え忘れると古いJSが残る）
 
+## 共有ランキング（Firebase Realtime Database）
+- Nmoku(`rittai-nmoku`)と**同じFirebaseプロジェクトを流用**。データパスは `kyushu_shooter/scores`
+- 接続情報・APIは `js/remote.js` の `RemoteScores`（`init/submit/fetchTop`）。接続キーはクライアント公開が仕様上正常
+- フロー: 登録時に `RemoteScores.submit()` でFirebaseへ送信 → ランキングは `fetchTop(20)` で取得。
+  取得失敗/オフライン時は `localStorage` にフォールバック（ゲームは常に動く）
+- **必須設定**: Firebaseコンソール → rittai-nmoku → Realtime Database → ルール に以下を追加
+  （既存ルールは消さず、`"rules"` 直下に追記）:
+  ```json
+  "kyushu_shooter": {
+    "scores": { ".read": true, ".write": true, ".indexOn": "score" }
+  }
+  ```
+  未設定だと `PERMISSION_DENIED` となり自動的に端末内ランキング表示になる
+
 ## 描画解像度（高DPI対応）
 - 端末のCSSピクセルにバッファを合わせるため、ゲームバッファを `DPR` 倍にしている。
   - `game.js`: `width: GW*DPR, height: GH*DPR`
@@ -116,3 +130,4 @@ EASY / NORMAL / HARD / EXTREME の4段階。選択は `registry` に保存しリ
 | v0.2.1 | 画像アセット導入: タイトルロゴ(`img/KyushuShooterTitle.png`)＋熊本空撮背景(`img/kumamoto_background.png`)。手描き背景をTileSpriteの空撮スクロールに置換 |
 | v0.2.2 | 自機を画像(`img/player.png` 真上視点4WD)に差し替え。表示60px・控えめな当たり判定(33×45) |
 | v0.2.3 | 高解像度化(描画バッファをDPR倍・各シーンでカメラズーム) / スコア重複登録バグ修正(ID方式+旧データ掃除) / 背景スクロールを減速・スパイク抑制 / JSにキャッシュバスター付与 |
+| v0.3.0 | 共有ランキング導入(Firebase Realtime Database・Nmokuと同一プロジェクト流用)。オンライン優先＋オフラインはローカル表示。**要: Firebaseルールで kyushu_shooter パス許可** |
