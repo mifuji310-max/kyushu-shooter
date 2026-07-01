@@ -159,6 +159,7 @@ class GameScene extends Phaser.Scene {
   }
 
   _gTex(key, w, h, fn) {
+    if (this.textures.exists(key)) return; // リトライ時の再生成・警告を防止
     const g = this.add.graphics();
     fn(g);
     g.generateTexture(key, w, h);
@@ -380,7 +381,9 @@ class GameScene extends Phaser.Scene {
   _makeBackground() {
     // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
     this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'bg_kumamoto3').setDepth(0);
-    const s = GW / 724; // 画像幅(724px)をゲーム幅に合わせる
+    // 画像の実幅からタイル倍率を算出（画像を差し替えても自動追従）
+    const srcW = this.textures.get('bg_kumamoto3').getSourceImage().width || 853;
+    const s = GW / srcW;
     this._bg.tileScaleX = s;
     this._bg.tileScaleY = s;
 
@@ -663,11 +666,19 @@ class GameScene extends Phaser.Scene {
     if (hpRatio <= 0.25 && b.phase === 2) this._bossPhaseChange(b, 3, 'boss3', 'FINAL PHASE', time);
 
     // フェーズ移行のクッション中は攻撃せず、ゆっくり中央へ戻す（無敵）
-    if (b.transitionUntil && time < b.transitionUntil) {
-      b.x += (GW / 2 - b.x) * 0.05;
-      b.y += (this._bossY - b.y) * 0.05;
-      return;
+    if (b.transitionUntil) {
+      if (time < b.transitionUntil) {
+        b.x += (GW / 2 - b.x) * 0.05;
+        b.y += (this._bossY - b.y) * 0.05;
+        return;
+      }
+      // クッション終了: 中央からなめらかに動き出せるよう位相をリセット（位置飛び防止）
+      b.transitionUntil = 0;
+      b.elapsed = 0;
     }
+
+    // 突進中はトゥイーンに任せる（正弦運動で上書きしない）
+    if (b.charging) return;
 
     const freq = b.phase === 1 ? 0.8 : b.phase === 2 ? 1.2 : 1.5;
     const amp  = b.phase === 3 ? 150 : 120;
@@ -728,11 +739,16 @@ class GameScene extends Phaser.Scene {
   }
 
   _bossCharge() {
-    if (!this.boss) return;
+    const b = this.boss;
+    if (!b) return;
+    // 突進中は_updateBossの正弦運動に上書きされないようフラグで制御し、
+    // プレイヤーへ寄って戻る。戻ったら位相をリセットして中央から再開。
+    b.charging = true;
+    const tx = Phaser.Math.Clamp(this.player.x, 60, GW - 60);
     this.tweens.add({
-      targets: this.boss, x: this.player.x, y: this.player.y - 80,
-      duration: 400, ease: 'Power2',
-      onComplete: () => { if (this.boss) this.cameras.main.shake(200, 0.01); },
+      targets: b, x: tx, y: this.player.y - 90,
+      duration: 500, ease: 'Sine.easeInOut', yoyo: true, hold: 120,
+      onComplete: () => { if (b && b.active) { b.charging = false; b.elapsed = 0; } },
     });
   }
 
@@ -923,6 +939,7 @@ class GameScene extends Phaser.Scene {
       group.getChildren().forEach(obj => {
         if (obj.y < -margin || obj.y > GH + margin ||
             obj.x < -margin || obj.x > GW + margin) {
+          this.tweens.killTweensOf(obj); // 破棄前に残存tweenを止める
           obj.destroy();
         }
       });
@@ -1007,6 +1024,7 @@ class GameScene extends Phaser.Scene {
         break;
       }
     }
+    this.tweens.killTweensOf(item);
     item.destroy();
   }
 

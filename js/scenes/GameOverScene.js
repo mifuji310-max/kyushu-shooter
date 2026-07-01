@@ -10,6 +10,8 @@ class GameOverScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setZoom(DPR).centerOn(GW / 2, GH / 2); // 高解像度化（座標系は不変）
+    // どんな経路でシーンが終了しても入力欄・リスナを確実に後始末
+    this.events.once('shutdown', () => this._cleanup());
 
     this._stars = [];
     this._starGfx = this.add.graphics();
