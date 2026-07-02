@@ -34,10 +34,13 @@ class GameScene extends Phaser.Scene {
   create() {
     this.cameras.main.setZoom(DPR).centerOn(GW / 2, GH / 2); // 高解像度化（座標系は不変）
 
+    SFX.init(); SFX.resume();
+
     this.score      = 0;
-    this.stageTime  = 0;
+    this.mode       = 'intro';  // intro → wave → boss → ...
+    this.waveIndex  = 0;        // 0,1,2（各ウェーブ後にボス①②③）
+    this._waveSpawnsLeft = 0;
     this.bossActive = false;
-    this.bossDefeated = false;
     this.playerMaxHP = this.diff.playerHP;
     this.bossMaxHP   = this.diff.bossHP;
     this.playerHP   = this.playerMaxHP;
@@ -66,6 +69,9 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(40);
     this.tweens.add({ targets: dt, alpha: 0, delay: 900, duration: 500,
       onComplete: () => dt.destroy() });
+
+    // 難易度バナーのあと最初のウェーブ開始
+    this.time.delayedCall(1200, () => this._startWave(0));
   }
 
   update(time, delta) {
@@ -74,6 +80,7 @@ class GameScene extends Phaser.Scene {
     this._movePlayer(delta);
     this._updateEnemies(time, delta);
     this._updateBoss(time, delta);
+    this._checkWaveClear();
     this._updateUI();
     this._cleanupOffscreen();
 
@@ -435,8 +442,8 @@ class GameScene extends Phaser.Scene {
       fontSize: '16px', fontFamily: 'sans-serif', color: '#ffffff',
     }).setDepth(30);
 
-    this._timerText = TXT(this, GW - 10, 10, String(STAGE_DURATION), {
-      fontSize: '24px', fontFamily: 'sans-serif', color: '#ffffff',
+    this._timerText = TXT(this, GW - 10, 10, 'WAVE 1/3', {
+      fontSize: '18px', fontFamily: 'sans-serif', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(1, 0).setDepth(30);
 
     // ─ ボスHPバー（上部・非表示待機）
@@ -479,9 +486,11 @@ class GameScene extends Phaser.Scene {
   _setupTouch() {
     this._touch = { id: null, startX: 0, playerStartX: GW / 2 };
     this._cursors = this.input.keyboard.createCursorKeys();
+    this._fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     // カメラズーム下では ptr.x/y はバッファ座標になるため worldX/worldY を使う
     this.input.on('pointerdown', ptr => {
+      SFX.resume(); // 自動再生制限の解除
       if (this._touch.id === null && ptr.worldY >= PLAY_H) {
         this._touch.id = ptr.id;
         this._touch.startX = ptr.worldX;
@@ -516,42 +525,56 @@ class GameScene extends Phaser.Scene {
 
   _setupTimers() {
     this.time.addEvent({
-      delay: 1000, callback: this._onSecondTick, callbackScope: this, loop: true,
-    });
-    this.time.addEvent({
       delay: 30, callback: this._playerFire, callbackScope: this, loop: true,
     });
   }
 
-  // ─── TIMERS & WAVES ────────────────────────────────────
+  // ─── WAVES（3ラウンド構成の状態機械）────────────────────
 
-  _onSecondTick() {
+  _startWave(index) {
     if (this.gameEnded) return;
-    this.stageTime++;
+    this.mode = 'wave';
+    this.waveIndex = index;
+    this._waveSpawnsLeft = 0;
+    this.waveTimers = {};
 
-    if (!this.bossActive) {
-      if (this.stageTime >= STAGE_DURATION) {
-        this._startBoss();
-        return;
-      }
-      WAVE_SCHEDULE.forEach(w => {
-        const key = w.type + '_' + w.startTime;
-        if (w.startTime === this.stageTime && !this.waveTimers[key]) {
-          this._spawnEnemy(w.type);
-          this.waveTimers[key] = this.time.addEvent({
-            delay: w.interval,
-            callback: () => this._spawnEnemy(w.type),
-            loop: true,
-          });
-        }
-      });
-    }
+    this._banner('WAVE ' + (index + 1), '#66ddff');
+
+    STAGE_WAVES[index].forEach((grp, gi) => {
+      this._waveSpawnsLeft += grp.count;
+      const begin = () => {
+        if (this.gameEnded || this.mode !== 'wave') return;
+        this.waveTimers['w' + index + '_' + gi] = this.time.addEvent({
+          delay: grp.interval, repeat: grp.count - 1,
+          callback: () => { this._spawnEnemy(grp.type); this._waveSpawnsLeft--; },
+        });
+      };
+      if (grp.startAt) this.time.delayedCall(grp.startAt, begin);
+      else begin();
+    });
+  }
+
+  // ウェーブの敵を出し切って画面から居なくなったらボス登場
+  _checkWaveClear() {
+    if (this.mode !== 'wave') return;
+    if (this._waveSpawnsLeft > 0) return;
+    if (this.enemies.countActive(true) > 0) return;
+    this.mode = 'boss-incoming';
+    this.time.delayedCall(700, () => this._startBoss(this.waveIndex + 1));
+  }
+
+  _banner(text, color) {
+    const t = TXT(this, GW / 2, PLAY_H / 2 - 70, text, {
+      fontSize: '30px', color: color || '#ffffff', stroke: '#000', strokeThickness: 5, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(41).setAlpha(0);
+    this.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 900,
+      onComplete: () => t.destroy() });
   }
 
   // ─── ENEMY SPAWNING ────────────────────────────────────
 
   _spawnEnemy(type) {
-    if (this.gameEnded || this.bossActive) return;
+    if (this.gameEnded || this.mode !== 'wave') return;
     const cfg = ENEMY_CFG[type];
     const x = Phaser.Math.Between(cfg.w / 2 + 10, GW - cfg.w / 2 - 10);
     const y = -cfg.h / 2 - 10;
@@ -614,34 +637,42 @@ class GameScene extends Phaser.Scene {
 
   // ─── BOSS ──────────────────────────────────────────────
 
-  _startBoss() {
+  _startBoss(phaseNum) {
     this.bossActive = true;
+    this.mode = 'boss';
     this._bossY = 158; // HPゲージに被らない待機位置（やや上）
     Object.values(this.waveTimers).forEach(t => t && t.remove());
     this.enemies.clear(true, true);
 
-    // 荘厳な暗転（画面全体の振動はしない）
+    SFX.bossWarn();
+    const isFinal = phaseNum >= 3;
+
+    // フェーズ3は一度画面を完全暗転してから登場（荘厳）。①②は暗転（半分）。
     const veil = this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000000, 0).setDepth(38);
-    this.tweens.add({ targets: veil, alpha: 0.5, duration: 800, yoyo: true, hold: 1400,
-      onComplete: () => veil.destroy() });
+    this.tweens.add({
+      targets: veil, alpha: isFinal ? 1 : 0.5,
+      duration: isFinal ? 700 : 800, yoyo: true, hold: isFinal ? 1600 : 1400,
+      onComplete: () => veil.destroy(),
+    });
 
     // 警告演出
     const warn = TXT(this, GW / 2, PLAY_H / 2 - 34, '⚠ W A R N I N G ⚠', {
       fontSize: '24px', color: '#ff3355', stroke: '#000', strokeThickness: 5, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(40).setAlpha(0);
-    const nm = TXT(this, GW / 2, PLAY_H / 2 + 6, 'B O S S', {
-      fontSize: '34px', color: '#ffffff', stroke: '#aa0000', strokeThickness: 5, fontStyle: 'bold',
+    const nm = TXT(this, GW / 2, PLAY_H / 2 + 6, isFinal ? 'FINAL BOSS' : 'B O S S ' + phaseNum, {
+      fontSize: '32px', color: '#ffffff', stroke: '#aa0000', strokeThickness: 5, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(40).setAlpha(0);
     this.tweens.add({ targets: [warn, nm], alpha: 1, duration: 450, yoyo: true, hold: 1700, delay: 250,
       onComplete: () => { warn.destroy(); nm.destroy(); } });
 
-    this.boss = this.physics.add.sprite(GW / 2, -120, 'boss1');
+    this.boss = this.physics.add.sprite(GW / 2, -120, 'boss' + phaseNum);
     this.boss.setDepth(9);
     this.boss.setDisplaySize(172, 172);
     this.boss.body.setSize(this.boss.width * 0.62, this.boss.height * 0.56);
     this.boss.body.setOffset(this.boss.width * 0.19, this.boss.height * 0.22);
-    this.boss.bossHP = this.bossMaxHP;
-    this.boss.phase = 1;
+    this.boss.bossHP = Math.round(this.bossMaxHP * BOSS_HP_FACTORS[phaseNum - 1]);
+    this.boss.bossMaxHP = this.boss.bossHP; // このボスの最大HP（バー用）
+    this.boss.phase = phaseNum;
     this.boss.elapsed = 0;
     this.boss.lastShot = 0;
     this.boss.lastCharge = 0;
@@ -649,9 +680,10 @@ class GameScene extends Phaser.Scene {
     this.bossGroup.add(this.boss);
     this._bossHpContainer.setVisible(true);
 
-    // ジワーッと降臨（ゆっくりイージング・画面振動なし）
+    // ジワーッと降臨（ゆっくりイージング・画面振動なし）。フェーズ3は暗転の頂点から現れる
     this.tweens.add({
-      targets: this.boss, y: this._bossY, duration: 2800, ease: 'Sine.easeInOut', delay: 500,
+      targets: this.boss, y: this._bossY, duration: 2800, ease: 'Sine.easeInOut',
+      delay: isFinal ? 900 : 500,
       onComplete: () => { if (this.boss) this.boss.entering = false; },
     });
   }
@@ -661,22 +693,6 @@ class GameScene extends Phaser.Scene {
     const b = this.boss;
     if (b.entering) return; // 降臨演出中は制御しない
     b.elapsed += delta;
-
-    const hpRatio = b.bossHP / this.bossMaxHP;
-    if (hpRatio <= 0.5 && b.phase === 1) this._bossPhaseChange(b, 2, 'boss2', 'PHASE 2', time);
-    if (hpRatio <= 0.25 && b.phase === 2) this._bossPhaseChange(b, 3, 'boss3', 'FINAL PHASE', time);
-
-    // フェーズ移行のクッション中は攻撃せず、ゆっくり中央へ戻す（無敵）
-    if (b.transitionUntil) {
-      if (time < b.transitionUntil) {
-        b.x += (GW / 2 - b.x) * 0.05;
-        b.y += (this._bossY - b.y) * 0.05;
-        return;
-      }
-      // クッション終了: 中央からなめらかに動き出せるよう位相をリセット（位置飛び防止）
-      b.transitionUntil = 0;
-      b.elapsed = 0;
-    }
 
     // 突進中はトゥイーンに任せる（正弦運動で上書きしない）
     if (b.charging) return;
@@ -695,21 +711,6 @@ class GameScene extends Phaser.Scene {
       b.lastCharge = time;
       this._bossCharge();
     }
-  }
-
-  // フェーズ移行に1クッション（無敵・光る・拡大脈動・バナー）
-  _bossPhaseChange(b, phase, tex, label, time) {
-    b.phase = phase;
-    b.transitionUntil = time + 1500;
-    this.cameras.main.flash(220, 255, 230, 190);
-    this._explode(b.x, b.y);
-    b.setTexture(tex);
-    b.setTintFill(0xffffff); // 白く光って「変身」
-    const base = b.scaleX;
-    this.tweens.add({ targets: b, scaleX: base * 1.12, scaleY: base * 1.12,
-      duration: 220, yoyo: true, repeat: 2 });
-    this.time.delayedCall(900, () => { if (b && b.active) b.clearTint(); });
-    this._bossPhaseBanner(label);
   }
 
   _bossShoot(phase) {
@@ -751,15 +752,6 @@ class GameScene extends Phaser.Scene {
       duration: 500, ease: 'Sine.easeInOut', yoyo: true, hold: 120,
       onComplete: () => { if (b && b.active) { b.charging = false; b.elapsed = 0; } },
     });
-  }
-
-  _bossPhaseBanner(msg) {
-    const txt = TXT(this, GW / 2, PLAY_H / 2 - 40, msg, {
-      fontSize: '22px', fontFamily: 'sans-serif', color: '#ff6600',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(40);
-    this.tweens.add({ targets: txt, alpha: 0, delay: 1500, duration: 500,
-      onComplete: () => txt.destroy() });
   }
 
   _spawnEnemyBullet(x, y, vx, vy) {
@@ -813,11 +805,17 @@ class GameScene extends Phaser.Scene {
 
   // 拡散(spreadLv)・大玉(bigLv)・パワー(powerLevel)を合成して発射。
   // 取れば取るほど本数・威力・貫通が増え、拡散×大玉のかけ合わせも効く。
+  // タップ中（操作エリアに触れている）またはスペース押下中のみ発射
+  _isFiring() {
+    return this._touch.id !== null || (this._fireKey && this._fireKey.isDown);
+  }
+
   _playerFire() {
-    if (this.gameEnded) return;
+    if (this.gameEnded || !this._isFiring()) return;
     const now = this.time.now;
     if (now < this._nextFireAt) return;
     this._nextFireAt = now + (110 + this.bigLv * 45); // 大玉ほど連射は遅い
+    SFX.shoot();
 
     const cx = this.player.x;
     const cy = this.player.y - 30;
@@ -902,9 +900,12 @@ class GameScene extends Phaser.Scene {
   _updateUI() {
     this._scoreText.setText('SCORE: ' + this.score.toLocaleString());
 
-    const remain = Math.max(0, STAGE_DURATION - this.stageTime);
-    this._timerText.setText(this.bossActive ? 'BOSS!' : String(remain));
-    if (remain <= 10 && !this.bossActive) this._timerText.setColor('#ff4444');
+    // 進行表示（WAVE x/3 ・ BOSS x/3）
+    if (this.bossActive && this.boss) {
+      this._timerText.setText('BOSS ' + this.boss.phase + '/3').setColor('#ff5555');
+    } else {
+      this._timerText.setText('WAVE ' + (this.waveIndex + 1) + '/3').setColor('#ffffff');
+    }
 
     const hpRatio = Phaser.Math.Clamp(this.playerHP / this.playerMaxHP, 0, 1);
     this._hpBar.width = 110 * hpRatio;
@@ -920,7 +921,7 @@ class GameScene extends Phaser.Scene {
     this._powerText.setText(pt).setColor(this.bigLv > 0 ? '#ff80ab' : this.spreadLv > 0 ? '#ffb060' : '#ffcc00');
 
     if (this.bossActive && this.boss && this.boss.active) {
-      const bRatio = Phaser.Math.Clamp(this.boss.bossHP / this.bossMaxHP, 0, 1);
+      const bRatio = Phaser.Math.Clamp(this.boss.bossHP / this.boss.bossMaxHP, 0, 1);
       this._bossHpBar.width = (GW - 40) * bRatio;
     }
   }
@@ -956,18 +957,19 @@ class GameScene extends Phaser.Scene {
     if (enemy.hp <= 0) {
       this._addScore(enemy.score);
       this._explode(enemy.x, enemy.y);
+      SFX.explosion();
       this._tryDropItem(enemy.x, enemy.y);
+      this.tweens.killTweensOf(enemy);
       enemy.destroy();
     }
   }
 
   _onBulletHitBoss(bullet, boss) {
     bullet.destroy(); // 単体ボスでは貫通させず必ず消す（多重ヒット防止）
-    // フェーズ移行のクッション中や降臨中は無敵
-    if (boss.entering || (boss.transitionUntil && this.time.now < boss.transitionUntil)) return;
+    if (boss.entering || boss.defeated) return; // 降臨中・撃破処理中は無敵
     boss.bossHP -= (bullet.damage || 1);
     this._flashWhite(boss);
-    if (boss.bossHP <= 0) this._bossDefeated();
+    if (boss.bossHP <= 0) this._bossEncounterDefeated();
   }
 
   // 注意: Phaserは overlap(グループ, スプライト) のとき callback(スプライト, 要素)
@@ -1007,7 +1009,10 @@ class GameScene extends Phaser.Scene {
         this.shieldHits = 3;
         this._setShield(true);
         this._showPickupMsg('バリア展開！', '#33e0ff');
-        break;
+        SFX.barrier();
+        this.tweens.killTweensOf(item);
+        item.destroy();
+        return;
       case 'item_heal': {
         const amt = this.diff.healAmount;
         const healed = Math.min(amt, this.playerMaxHP - this.playerHP);
@@ -1016,6 +1021,7 @@ class GameScene extends Phaser.Scene {
         break;
       }
     }
+    SFX.powerup();
     this.tweens.killTweensOf(item);
     item.destroy();
   }
@@ -1037,6 +1043,7 @@ class GameScene extends Phaser.Scene {
     if (this.shieldHits > 0) {
       this.shieldHits--;
       this.cameras.main.flash(90, 0, 150, 255); // 青フラッシュ
+      SFX.tick();
       this.invincible = true;
       if (this.shieldHits <= 0) this._setShield(false);
       this.time.delayedCall(500, () => { this.invincible = false; });
@@ -1045,6 +1052,7 @@ class GameScene extends Phaser.Scene {
 
     this.invincible = true;
     this.playerHP = Math.max(0, this.playerHP - amount);
+    SFX.damage();
 
     // ダメージ表現は画面側のみで行い、自機スプライトには一切触れない。
     // （visible/alpha/tint を触ると端末GPUによっては自機が消えて戻らないため）
@@ -1100,24 +1108,35 @@ class GameScene extends Phaser.Scene {
 
   // ─── GAME END ──────────────────────────────────────────
 
-  _bossDefeated() {
-    if (this.bossDefeated) return;
-    this.bossDefeated = true;
-    this.cameras.main.shake(400, 0.02);
+  // ボス1体撃破。フェーズ3なら本当のクリア、それ以外は次のウェーブへ。
+  _bossEncounterDefeated() {
+    const b = this.boss;
+    if (!b || b.defeated) return;
+    b.defeated = true;
+    const wasPhase = b.phase;
+    this.bossActive = false;
+    this.boss = null;
+    this.mode = 'boss-clear';
+    this._bossHpContainer.setVisible(false);
+    this.enemyBullets.clear(true, true); // 残弾を掃除
 
+    SFX.bossDefeat();
+    this.cameras.main.shake(400, 0.02);
     for (let i = 0; i < 8; i++) {
-      this.time.delayedCall(i * 120, () => {
-        if (this.boss) {
-          this._explode(
-            this.boss.x + Phaser.Math.Between(-40, 40),
-            this.boss.y + Phaser.Math.Between(-30, 30)
-          );
-        }
+      this.time.delayedCall(i * 110, () => {
+        if (b && b.active) this._explode(b.x + Phaser.Math.Between(-40, 40), b.y + Phaser.Math.Between(-30, 30));
       });
     }
-    this.time.delayedCall(1200, () => {
-      if (this.boss) { this.boss.destroy(); this.boss = null; }
-      this._gameOver(true);
+
+    this.time.delayedCall(1100, () => {
+      if (b && b.active) b.destroy();
+      if (wasPhase >= 3) {
+        this._banner('STAGE CLEAR!', '#ffdd44');
+        SFX.clear();
+        this.time.delayedCall(400, () => this._gameOver(true));
+      } else {
+        this._startWave(wasPhase); // phase1撃破→wave index1、phase2→index2
+      }
     });
   }
 

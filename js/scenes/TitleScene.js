@@ -8,6 +8,9 @@ class TitleScene extends Phaser.Scene {
   create() {
     this.cameras.main.setZoom(DPR).centerOn(GW / 2, GH / 2); // 高解像度化（座標系は不変）
 
+    SFX.init();
+    this.input.once('pointerdown', () => SFX.resume()); // 自動再生制限の解除
+
     // 前回選んだ難易度を引き継ぐ（なければNORMAL）
     this._selected = this.registry.get('difficulty') || 'NORMAL';
 
@@ -72,6 +75,9 @@ class TitleScene extends Phaser.Scene {
       onClick: () => this.scene.start('LeaderboardScene'),
     });
 
+    // 音量UI
+    this._makeVolumeUI(612);
+
     // バージョン
     TXT(this, GW - 8, GH - 8, VERSION, {
       fontSize: '12px', fontFamily: 'sans-serif', color: '#555555',
@@ -79,6 +85,54 @@ class TitleScene extends Phaser.Scene {
 
     // スペースキーでも開始
     this.input.keyboard.once('keydown-SPACE', () => this._start());
+  }
+
+  _makeVolumeUI(y) {
+    const w = 150;
+    const x0 = GW / 2 - w / 2 + 16;      // トラック左端（=音量0）
+    const x1 = GW / 2 + w / 2 + 16;      // トラック右端（=音量1）
+
+    // ミュート/スピーカー アイコン（タップで切替）
+    this._muteIcon = TXT(this, GW / 2 - w / 2 - 24, y, SFX.isMuted() ? '🔇' : '🔊', {
+      fontSize: '22px',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this._muteIcon.on('pointerdown', () => {
+      SFX.init(); SFX.resume();
+      SFX.setMuted(!SFX.isMuted());
+      this._muteIcon.setText(SFX.isMuted() ? '🔇' : '🔊');
+      this._refreshVol();
+      if (!SFX.isMuted()) SFX.powerup();
+    });
+
+    // トラック・フィル・ノブ
+    this.add.rectangle((x0 + x1) / 2, y, w, 6, 0x333355).setOrigin(0.5);
+    this._volFill = this.add.rectangle(x0, y, 0, 6, 0x66ccff).setOrigin(0, 0.5);
+    this._volKnob = this.add.circle(x0, y, 11, 0xffffff).setInteractive({ useHandCursor: true });
+    this._volTrack = { x0, x1 };
+    this.input.setDraggable(this._volKnob);
+    this._volKnob.on('drag', (p, dx) => this._setVolFromX(dx));
+    // トラックをタップしても設定できるようゾーンを敷く
+    const zone = this.add.zone((x0 + x1) / 2, y, w + 30, 30).setOrigin(0.5).setInteractive();
+    zone.on('pointerdown', p => this._setVolFromX(p.worldX));
+
+    this._refreshVol();
+  }
+
+  _setVolFromX(px) {
+    const { x0, x1 } = this._volTrack;
+    const v = Phaser.Math.Clamp((px - x0) / (x1 - x0), 0, 1);
+    SFX.init(); SFX.resume();
+    if (SFX.isMuted() && v > 0) { SFX.setMuted(false); this._muteIcon.setText('🔊'); }
+    SFX.setVolume(v);
+    this._refreshVol();
+  }
+
+  _refreshVol() {
+    const { x0, x1 } = this._volTrack;
+    const v = SFX.isMuted() ? 0 : SFX.volume;
+    const px = x0 + (x1 - x0) * v;
+    this._volKnob.x = px;
+    this._volFill.width = px - x0;
   }
 
   _makeDiffButton(x, y, key) {

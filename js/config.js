@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.4.0';
+const VERSION = 'v0.5.0';
 
 // カラーパレット
 const C = {
@@ -105,20 +105,21 @@ const C = {
   TEXT_DIM:    0xaaaaaa,
 };
 
-// ステージ時間（秒）
-const STAGE_DURATION = 30;
-
-// 敵ウェーブスケジュール（30秒ステージ）
-const WAVE_SCHEDULE = [
-  { startTime: 0,  type: 'renkon',   interval: 2000 },
-  { startTime: 5,  type: 'renkon',   interval: 1500 },
-  { startTime: 8,  type: 'jintaiko', interval: 3500 },
-  { startTime: 12, type: 'kingyo',   interval: 1800 },
-  { startTime: 16, type: 'chip',     interval: 1200 },
-  { startTime: 20, type: 'kyoryu',   interval: 2500 },
-  { startTime: 24, type: 'uma',      interval: 1200 },
-  { startTime: 27, type: 'uma',      interval: 800  },
+// 3ラウンド構成: 各ウェーブ(通常敵)を全滅させるとボス①②③が登場。
+// 各グループ = { type, count(出現数), interval(出現間隔ms), startAt(ウェーブ開始からの遅延ms) }
+const STAGE_WAVES = [
+  [ { type: 'renkon', count: 6, interval: 900 },
+    { type: 'kingyo', count: 4, interval: 1000, startAt: 1500 } ],
+  [ { type: 'chip',     count: 6, interval: 800 },
+    { type: 'jintaiko', count: 3, interval: 1600, startAt: 800 },
+    { type: 'renkon',   count: 5, interval: 800,  startAt: 2600 } ],
+  [ { type: 'kyoryu', count: 4, interval: 1500 },
+    { type: 'uma',    count: 6, interval: 700, startAt: 1200 },
+    { type: 'kingyo', count: 5, interval: 700, startAt: 3200 } ],
 ];
+
+// 各ボス(①②③)のHP係数（難易度のbossHPに乗算・段階的に強化）
+const BOSS_HP_FACTORS = [0.6, 0.8, 1.0];
 
 // 敵パラメータ（w/h は表示・出現位置の基準サイズ＝正方フレーム）
 const ENEMY_CFG = {
