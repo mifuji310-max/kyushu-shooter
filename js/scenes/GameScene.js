@@ -692,10 +692,12 @@ class GameScene extends Phaser.Scene {
     if (!this.bossActive || !this.boss || !this.boss.active) return;
     const b = this.boss;
     if (b.entering) return; // 降臨演出中は制御しない
-    b.elapsed += delta;
 
-    // 突進中はトゥイーンに任せる（正弦運動で上書きしない）
+    // 突進中はトゥイーンに任せる（正弦運動で上書きしない）。
+    // elapsedもここで止めることで、突進から戻った瞬間に正弦運動が
+    // 同じ時刻・同じ座標から連続的に再開できる（止めないと時間だけ進んで位置が飛ぶ）。
     if (b.charging) return;
+    b.elapsed += delta;
 
     const freq = b.phase === 1 ? 0.8 : b.phase === 2 ? 1.2 : 1.5;
     const amp  = b.phase === 3 ? 150 : 120;
@@ -744,13 +746,14 @@ class GameScene extends Phaser.Scene {
     const b = this.boss;
     if (!b) return;
     // 突進中は_updateBossの正弦運動に上書きされないようフラグで制御し、
-    // プレイヤーへ寄って戻る。戻ったら位相をリセットして中央から再開。
+    // プレイヤーへ寄って戻る。elapsedは突進中止めているため、yoyoで戻る座標と
+    // 正弦運動の計算結果が一致し、戻った後も連続的に動き出せる（位置飛び防止）。
     b.charging = true;
     const tx = Phaser.Math.Clamp(this.player.x, 60, GW - 60);
     this.tweens.add({
       targets: b, x: tx, y: this.player.y - 90,
       duration: 500, ease: 'Sine.easeInOut', yoyo: true, hold: 120,
-      onComplete: () => { if (b && b.active) { b.charging = false; b.elapsed = 0; } },
+      onComplete: () => { if (b && b.active) b.charging = false; },
     });
   }
 

@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.5.0';
+const VERSION = 'v0.5.1';
 
 // カラーパレット
 const C = {
@@ -108,18 +108,18 @@ const C = {
 // 3ラウンド構成: 各ウェーブ(通常敵)を全滅させるとボス①②③が登場。
 // 各グループ = { type, count(出現数), interval(出現間隔ms), startAt(ウェーブ開始からの遅延ms) }
 const STAGE_WAVES = [
-  [ { type: 'renkon', count: 6, interval: 900 },
-    { type: 'kingyo', count: 4, interval: 1000, startAt: 1500 } ],
-  [ { type: 'chip',     count: 6, interval: 800 },
-    { type: 'jintaiko', count: 3, interval: 1600, startAt: 800 },
-    { type: 'renkon',   count: 5, interval: 800,  startAt: 2600 } ],
-  [ { type: 'kyoryu', count: 4, interval: 1500 },
-    { type: 'uma',    count: 6, interval: 700, startAt: 1200 },
-    { type: 'kingyo', count: 5, interval: 700, startAt: 3200 } ],
+  [ { type: 'renkon', count: 12, interval: 900 },
+    { type: 'kingyo', count: 8,  interval: 1000, startAt: 1500 } ],
+  [ { type: 'chip',     count: 12, interval: 800 },
+    { type: 'jintaiko', count: 6,  interval: 1600, startAt: 800 },
+    { type: 'renkon',   count: 10, interval: 800,  startAt: 2600 } ],
+  [ { type: 'kyoryu', count: 8,  interval: 1500 },
+    { type: 'uma',    count: 12, interval: 700, startAt: 1200 },
+    { type: 'kingyo', count: 10, interval: 700, startAt: 3200 } ],
 ];
 
 // 各ボス(①②③)のHP係数（難易度のbossHPに乗算・段階的に強化）
-const BOSS_HP_FACTORS = [0.6, 0.8, 1.0];
+const BOSS_HP_FACTORS = [1.2, 1.6, 2.0];
 
 // 敵パラメータ（w/h は表示・出現位置の基準サイズ＝正方フレーム）
 const ENEMY_CFG = {
