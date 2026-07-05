@@ -11,8 +11,9 @@ class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    // 読み込み済みならスキップされる
-    const load = (k, f) => { if (!this.textures.exists(k)) this.load.image(k, f); };
+    // 読み込み済みならスキップされる。画像URLにも?v=を付け、更新時にブラウザの
+    // 画像キャッシュ(JSと違いキャッシュバスターが無かった)で古い絵が出続けるのを防ぐ
+    const load = (k, f) => { if (!this.textures.exists(k)) this.load.image(k, f + '?v=' + VERSION); };
     load('bg_kumamoto3', 'img/kumamoto_background3.png');
     load('player_img', 'img/player.png');
     load('enemy_renkon_img', 'img/enemy_renkon.png');
@@ -25,12 +26,8 @@ class GameScene extends Phaser.Scene {
     load('boss2', 'img/boss_fase2.png');
     load('boss3', 'img/boss_fase3.png');
     load('boss4', 'img/boss_fase4.png');
-    load('item_power', 'img/item_power.png');
-    load('item_heal', 'img/item_heal.png');
-    load('item_spread', 'img/item_spread.png');
-    load('item_big', 'img/item_big.png');
-    load('item_barrier', 'img/item_barrier.png');
-    load('item_beam', 'img/item_beam.png');
+    // アイテムアイコンはAI画像ではなくベクター描画（_makeTextures内）。32px表示でも常にクッキリで、
+    // 生成ガチャの当たり外れが無い。
   }
 
   create() {
@@ -117,7 +114,86 @@ class GameScene extends Phaser.Scene {
     this._texExplosion();
     this._texBigBullet();
     this._texShield();
-    // 蓮根/半導体/ボス/アイテムは画像を使用（生成不要）
+    this._texItemIcons();
+    // 蓮根/半導体/ボスは画像を使用（生成不要）
+  }
+
+  // 正多角形/星形の頂点座標を生成（アイテムアイコンの盾・星に使用）
+  _polyPoints(cx, cy, r, sides, rotate) {
+    const pts = [];
+    for (let i = 0; i < sides; i++) {
+      const a = rotate + (i / sides) * Math.PI * 2;
+      pts.push(new Phaser.Geom.Point(cx + Math.cos(a) * r, cy + Math.sin(a) * r));
+    }
+    return pts;
+  }
+
+  // アイテムアイコン群をベクター描画（AI画像ではなくコードで直接描くため、
+  // 32px表示でも常にクッキリ・当たり外れが無い）
+  _texItemIcons() {
+    const outline = (g, w) => g.lineStyle(w, 0x000000, 1);
+
+    // いきなり団子: 紫の芋の皮＋白い餅、黄色い星バッジ
+    this._gTex('item_power', 32, 32, g => {
+      outline(g, 3).fillStyle(0x7b3fa0).fillRoundedRect(5, 4, 22, 24, 10).strokeRoundedRect(5, 4, 22, 24, 10);
+      outline(g, 2.5).fillStyle(0xfff3d6).fillRoundedRect(8, 15, 16, 12, 6).strokeRoundedRect(8, 15, 16, 12, 6);
+      outline(g, 1.5).fillStyle(0xffd400).fillCircle(24, 8, 5).strokeCircle(24, 8, 5);
+    });
+
+    // 天然水: 水色のしずく＋白い十字
+    this._gTex('item_heal', 32, 32, g => {
+      outline(g, 3);
+      g.fillStyle(0x29b6f6);
+      g.beginPath();
+      g.moveTo(16, 3);
+      g.lineTo(26, 18);
+      g.arc(16, 18, 10, 0, Math.PI, false);
+      g.lineTo(16, 3);
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+      g.fillStyle(0xffffff).fillRoundedRect(13, 13, 6, 16, 2);
+      g.fillStyle(0xffffff).fillRoundedRect(7, 19, 18, 6, 2);
+    });
+
+    // 拡散ショット: オレンジの扇形3枚
+    this._gTex('item_spread', 32, 32, g => {
+      const cx = 16, cy = 29;
+      [[-0.9, -0.35], [-0.2, 0.2], [0.5, 1.1]].forEach(([a0, a1]) => {
+        const base = -Math.PI / 2;
+        const p1 = { x: cx + Math.cos(base + a0) * 24, y: cy + Math.sin(base + a0) * 24 };
+        const p2 = { x: cx + Math.cos(base + a1) * 24, y: cy + Math.sin(base + a1) * 24 };
+        outline(g, 2.5).fillStyle(0xff9800)
+          .fillTriangle(cx, cy, p1.x, p1.y, p2.x, p2.y)
+          .strokeTriangle(cx, cy, p1.x, p1.y, p2.x, p2.y);
+      });
+      g.fillStyle(0xffd54f).fillCircle(cx, cy, 4);
+    });
+
+    // 大玉ショット: ピンクの同心円
+    this._gTex('item_big', 32, 32, g => {
+      outline(g, 3).fillStyle(0xffb3cf).fillCircle(16, 16, 13).strokeCircle(16, 16, 13);
+      outline(g, 2).fillStyle(0xff4d94).fillCircle(16, 16, 7).strokeCircle(16, 16, 7);
+      g.fillStyle(0xffffff).fillCircle(13, 13, 2);
+    });
+
+    // バリア: 水色の六角形の盾＋白い星
+    this._gTex('item_barrier', 32, 32, g => {
+      const hex = this._polyPoints(16, 16, 13, 6, -Math.PI / 2);
+      outline(g, 3).fillStyle(0x26c6da).fillPoints(hex, true).strokePoints(hex, true);
+      const star = this._polyPoints(16, 16, 6, 5, -Math.PI / 2);
+      g.fillStyle(0xffffff).fillPoints(star, true);
+    });
+
+    // ビーム砲(超レア): 水色〜白の縦ビーム＋周囲にキラキラ
+    this._gTex('item_beam', 32, 32, g => {
+      outline(g, 2.5).fillStyle(0x00e5ff).fillRoundedRect(11, 3, 10, 26, 4).strokeRoundedRect(11, 3, 10, 26, 4);
+      g.fillStyle(0xffffff).fillRoundedRect(14, 3, 4, 26, 2);
+      // キラキラ（星バッジ）
+      const s1 = this._polyPoints(6, 8, 3.2, 4, 0);
+      const s2 = this._polyPoints(26, 22, 3.2, 4, 0);
+      g.fillStyle(0xffe066).fillPoints(s1, true).fillPoints(s2, true);
+    });
   }
 
   _texBigBullet() {
