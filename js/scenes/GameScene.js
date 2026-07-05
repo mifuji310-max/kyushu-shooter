@@ -24,11 +24,13 @@ class GameScene extends Phaser.Scene {
     load('boss1', 'img/boss_fase1.png');
     load('boss2', 'img/boss_fase2.png');
     load('boss3', 'img/boss_fase3.png');
+    load('boss4', 'img/boss_fase4.png');
     load('item_power', 'img/item_power.png');
     load('item_heal', 'img/item_heal.png');
     load('item_spread', 'img/item_spread.png');
     load('item_big', 'img/item_big.png');
     load('item_barrier', 'img/item_barrier.png');
+    load('item_beam', 'img/item_beam.png');
   }
 
   create() {
@@ -50,6 +52,8 @@ class GameScene extends Phaser.Scene {
     this.spreadLv   = 0;   // 拡散: 扇の広がり/本数
     this.bigLv      = 0;   // 大玉: サイズ/威力/貫通
     this.shieldHits = 0;
+    this.beamCharges = 0;  // レアアイテム: ビーム砲の残り回数
+    this._beamUntil  = 0;  // ビーム発射中の終了時刻
     this._nextFireAt = 0;
     this.waveTimers = {};
 
@@ -104,6 +108,8 @@ class GameScene extends Phaser.Scene {
     this._texPlayer();
     this._texBullet();
     this._texEnemyBullet();
+    this._texFireball();
+    this._texBeamSegment();
     this._texJintaiko();
     this._texKingyo();
     this._texKyoryu();
@@ -204,6 +210,25 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(0xff1744, 0.28).fillCircle(7, 7, 7);   // 外グロー
       g.fillStyle(0xff3060, 0.95).fillCircle(7, 7, 4.5); // 本体
       g.fillStyle(0xffd9d9, 0.95).fillCircle(5.6, 5.6, 1.8); // ハイライト
+    });
+  }
+
+  // レアアイテム「ビーム砲」の1セグメント（連射して太い光線に見せる）
+  _texBeamSegment() {
+    this._gTex('beam_segment', 26, 46, g => {
+      g.fillStyle(0x00e5ff, 0.35).fillRoundedRect(0, 0, 26, 46, 8);   // 外グロー
+      g.fillStyle(0x4df3ff, 0.95).fillRoundedRect(5, 0, 16, 46, 6);   // 本体
+      g.fillStyle(0xffffff, 1).fillRoundedRect(10, 0, 6, 46, 3);      // 白い芯
+    });
+  }
+
+  // ボスの火の玉（大きくゆっくり飛ぶ・見た目で分かりやすく危険な弾）
+  _texFireball() {
+    this._gTex('boss_fireball', 32, 32, g => {
+      g.fillStyle(0xff6d00, 0.25).fillCircle(16, 16, 16); // 外グロー
+      g.fillStyle(0xff3d00, 0.9).fillCircle(16, 16, 11);  // 本体
+      g.fillStyle(0xffca28, 0.95).fillCircle(16, 16, 6);  // 内側
+      g.fillStyle(0xfff3c4, 1).fillCircle(13, 13, 2.4);   // ハイライト
     });
   }
 
@@ -442,7 +467,7 @@ class GameScene extends Phaser.Scene {
       fontSize: '16px', fontFamily: 'sans-serif', color: '#ffffff',
     }).setDepth(30);
 
-    this._timerText = TXT(this, GW - 10, 10, 'WAVE 1/3', {
+    this._timerText = TXT(this, GW - 10, 10, 'WAVE 1/4', {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(1, 0).setDepth(30);
 
@@ -495,8 +520,10 @@ class GameScene extends Phaser.Scene {
         this._touch.id = ptr.id;
         this._touch.startX = ptr.worldX;
         this._touch.playerStartX = this.player.x;
+        this._tryStartBeam();
       }
     });
+    this._fireKey.on('down', () => this._tryStartBeam());
     this.input.on('pointermove', ptr => {
       if (ptr.id === this._touch.id && ptr.isDown) {
         const nx = this._touch.playerStartX + (ptr.worldX - this._touch.startX);
@@ -645,9 +672,9 @@ class GameScene extends Phaser.Scene {
     this.enemies.clear(true, true);
 
     SFX.bossWarn();
-    const isFinal = phaseNum >= 3;
+    const isFinal = phaseNum >= 4;
 
-    // フェーズ3は一度画面を完全暗転してから登場（荘厳）。①②は暗転（半分）。
+    // フェーズ4は一度画面を完全暗転してから登場（荘厳）。①②③は暗転（半分）。
     const veil = this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000000, 0).setDepth(38);
     this.tweens.add({
       targets: veil, alpha: isFinal ? 1 : 0.5,
@@ -676,6 +703,7 @@ class GameScene extends Phaser.Scene {
     this.boss.elapsed = 0;
     this.boss.lastShot = 0;
     this.boss.lastCharge = 0;
+    this.boss.lastFireball = 0;
     this.boss.entering = true; // 降臨中は_updateBossで動かさない
     this.bossGroup.add(this.boss);
     this._bossHpContainer.setVisible(true);
@@ -699,17 +727,22 @@ class GameScene extends Phaser.Scene {
     if (b.charging) return;
     b.elapsed += delta;
 
-    const freq = b.phase === 1 ? 0.8 : b.phase === 2 ? 1.2 : 1.5;
-    const amp  = b.phase === 3 ? 150 : 120;
+    const freq = b.phase === 1 ? 0.8 : b.phase === 2 ? 1.1 : b.phase === 3 ? 1.4 : 1.7;
+    const amp  = b.phase >= 3 ? 150 : 120;
     b.x = GW / 2 + Math.sin(b.elapsed / 1000 * freq) * amp;
     b.y = b.phase < 3 ? this._bossY : (this._bossY - 8) + Math.sin(b.elapsed / 700) * 18;
 
-    const shootInterval = (b.phase === 1 ? 2200 : b.phase === 2 ? 1600 : 1100) * this.diff.shootIntervalMul;
+    const shootInterval = (b.phase === 1 ? 2200 : b.phase === 2 ? 1700 : b.phase === 3 ? 1300 : 1000) * this.diff.shootIntervalMul;
     if (time - b.lastShot > shootInterval) {
       b.lastShot = time;
       this._bossShoot(b.phase);
     }
-    if (b.phase === 3 && time - b.lastCharge > 4000) {
+    // 火の玉: 大きくゆっくり・自機狙い。②以降で登場し、④が最も頻繁
+    if (b.phase >= 2 && time - b.lastFireball > (2600 - b.phase * 300)) {
+      b.lastFireball = time;
+      this._bossFireball();
+    }
+    if (b.phase >= 3 && time - b.lastCharge > 4000) {
       b.lastCharge = time;
       this._bossCharge();
     }
@@ -742,6 +775,21 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // 大きくゆっくり飛ぶ自機狙いの火の玉。速度は遅めで見切れるが、被弾すると痛い
+  _bossFireball() {
+    const b = this.boss;
+    if (!b) return;
+    const bx = b.x, by = b.y + 50;
+    const a = Phaser.Math.Angle.Between(bx, by, this.player.x, this.player.y);
+    const speed = 130;
+    const fb = this.enemyBullets.create(bx, by, 'boss_fireball');
+    fb.setDepth(7);
+    fb.setVelocity(Math.cos(a) * speed, Math.sin(a) * speed);
+    fb.body.setSize(fb.width * 0.55, fb.height * 0.55);
+    fb.body.setOffset(fb.width * 0.225, fb.height * 0.225); // 見た目の中心に判定を合わせる
+    fb.isFireball = true; // 通常弾より高威力
+  }
+
   _bossCharge() {
     const b = this.boss;
     if (!b) return;
@@ -762,11 +810,17 @@ class GameScene extends Phaser.Scene {
     b.setDepth(7);
     b.setVelocity(vx, vy);
     b.body.setSize(6, 6);
+    b.body.setOffset((b.width - 6) / 2, (b.height - 6) / 2); // 見た目の中心に判定を合わせる
   }
 
   // ─── ITEMS ─────────────────────────────────────────────
 
   _tryDropItem(x, y) {
+    // レアなビーム砲は難易度に関係ない超低確率の独立抽選（他のドロップと競合しない）
+    if (Math.random() < 0.012) {
+      this._spawnItem('item_beam', x, y);
+      return;
+    }
     const r = Math.random();
     const d = this.diff;
     if (r < d.healDrop) {
@@ -813,10 +867,25 @@ class GameScene extends Phaser.Scene {
     return this._touch.id !== null || (this._fireKey && this._fireKey.isDown);
   }
 
+  // レアアイテム「ビーム砲」を発射開始（タップ/スペースの押下エッジで呼ばれる）
+  _tryStartBeam() {
+    if (this.gameEnded || this.beamCharges <= 0 || this.time.now < this._beamUntil) return;
+    this.beamCharges--;
+    this._beamUntil = this.time.now + 1300;
+    SFX.barrier();
+  }
+
   _playerFire() {
     if (this.gameEnded || !this._isFiring()) return;
     const now = this.time.now;
     if (now < this._nextFireAt) return;
+
+    if (now < this._beamUntil) {
+      this._nextFireAt = now + 55; // ビーム中は高速連射の貫通弾で「太い光線」に見せる
+      this._fireBeamSegment();
+      return;
+    }
+
     this._nextFireAt = now + (110 + this.bigLv * 45); // 大玉ほど連射は遅い
     SFX.shoot();
 
@@ -843,6 +912,16 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // 太いビームの1セグメント。画面全高を貫通する高威力・多段貫通の弾
+  _fireBeamSegment() {
+    const b = this.playerBullets.create(this.player.x, this.player.y - 30, 'beam_segment');
+    b.setDepth(6).setVelocity(0, -900);
+    b.body.setSize(b.width * 0.8, b.height);
+    b.body.setOffset(b.width * 0.1, 0);
+    b.damage = 4;
+    b.pierceLeft = 99; // 実質無制限貫通
+  }
+
   // 1発生成。大玉Lvでサイズ・威力・貫通が上がる。
   _fireBullet(x, y, vx, vy) {
     const lv = this.bigLv;
@@ -851,12 +930,14 @@ class GameScene extends Phaser.Scene {
       b.setDepth(6).setVelocity(vx, vy);
       b.setScale(0.7 + lv * 0.22);
       b.body.setSize(b.width * 0.62, b.height * 0.62);
+      b.body.setOffset(b.width * 0.19, b.height * 0.19); // 見た目の中心に判定を合わせる
       b.damage = 1 + lv;      // 2 / 3 / 4
       b.pierceLeft = lv;      // 1 / 2 / 3 体貫通
     } else {
       const b = this.playerBullets.create(x, y, 'bullet');
       b.setDepth(6).setVelocity(vx, vy);
       b.body.setSize(b.width * 0.5, b.height * 0.8);
+      b.body.setOffset(b.width * 0.25, b.height * 0.1); // 見た目の中心に判定を合わせる
       b.damage = 1;
       b.pierceLeft = 0;
     }
@@ -903,11 +984,11 @@ class GameScene extends Phaser.Scene {
   _updateUI() {
     this._scoreText.setText('SCORE: ' + this.score.toLocaleString());
 
-    // 進行表示（WAVE x/3 ・ BOSS x/3）
+    // 進行表示（WAVE x/4 ・ BOSS x/4）
     if (this.bossActive && this.boss) {
-      this._timerText.setText('BOSS ' + this.boss.phase + '/3').setColor('#ff5555');
+      this._timerText.setText('BOSS ' + this.boss.phase + '/4').setColor('#ff5555');
     } else {
-      this._timerText.setText('WAVE ' + (this.waveIndex + 1) + '/3').setColor('#ffffff');
+      this._timerText.setText('WAVE ' + (this.waveIndex + 1) + '/4').setColor('#ffffff');
     }
 
     const hpRatio = Phaser.Math.Clamp(this.playerHP / this.playerMaxHP, 0, 1);
@@ -916,12 +997,16 @@ class GameScene extends Phaser.Scene {
       hpRatio > 0.5 ? C.HP_GREEN : hpRatio > 0.25 ? C.HP_YELLOW : C.HP_RED
     );
 
-    // パワー/拡散/大玉/バリアを合成表示
+    // パワー/拡散/大玉/バリア/ビーム砲を合成表示
     let pt = 'P' + this.powerLevel;
     if (this.spreadLv > 0) pt += ' 拡' + this.spreadLv;
     if (this.bigLv > 0) pt += ' 玉' + this.bigLv;
     if (this.shieldHits > 0) pt += ' 🛡' + this.shieldHits;
-    this._powerText.setText(pt).setColor(this.bigLv > 0 ? '#ff80ab' : this.spreadLv > 0 ? '#ffb060' : '#ffcc00');
+    if (this.beamCharges > 0) pt += ' ★' + this.beamCharges;
+    const beaming = this.time.now < this._beamUntil;
+    this._powerText.setText(pt).setColor(
+      beaming ? '#66eaff' : this.bigLv > 0 ? '#ff80ab' : this.spreadLv > 0 ? '#ffb060' : '#ffcc00'
+    );
 
     if (this.bossActive && this.boss && this.boss.active) {
       const bRatio = Phaser.Math.Clamp(this.boss.bossHP / this.boss.bossMaxHP, 0, 1);
@@ -981,8 +1066,9 @@ class GameScene extends Phaser.Scene {
   _onEnemyBulletHitPlayer(a, b) {
     if (this.invincible || this.gameEnded) return;
     const bullet = (a === this.player) ? b : a;
+    const dmg = bullet.isFireball ? 26 : 10; // 火の玉は大きく重い一撃
     bullet.destroy();
-    this._damagePlayer(Math.round(10 * this.diff.dmgMul));
+    this._damagePlayer(Math.round(dmg * this.diff.dmgMul));
   }
 
   _onEnemyHitPlayer(a, b) {
@@ -1016,6 +1102,10 @@ class GameScene extends Phaser.Scene {
         this.tweens.killTweensOf(item);
         item.destroy();
         return;
+      case 'item_beam':
+        this.beamCharges = Math.min(3, this.beamCharges + 1);
+        this._showPickupMsg('★ビーム砲 ×' + this.beamCharges, '#66eaff');
+        break;
       case 'item_heal': {
         const amt = this.diff.healAmount;
         const healed = Math.min(amt, this.playerMaxHP - this.playerHP);
@@ -1133,12 +1223,12 @@ class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(1100, () => {
       if (b && b.active) b.destroy();
-      if (wasPhase >= 3) {
+      if (wasPhase >= 4) {
         this._banner('STAGE CLEAR!', '#ffdd44');
         SFX.clear();
         this.time.delayedCall(400, () => this._gameOver(true));
       } else {
-        this._startWave(wasPhase); // phase1撃破→wave index1、phase2→index2
+        this._startWave(wasPhase); // phase1撃破→wave index1、phase2→index2、phase3→index3
       }
     });
   }
