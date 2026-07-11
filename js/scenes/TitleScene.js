@@ -68,11 +68,16 @@ class TitleScene extends Phaser.Scene {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#aaaaaa',
     }).setOrigin(0.5);
 
-    // ランキングボタン
-    mkButton(this, GW / 2, 558, 'ランキング', {
-      w: 170, h: 40, fontSize: '16px',
+    // ランキング／遊び方ボタン（横並び）
+    mkButton(this, GW / 2 - 88, 558, 'ランキング', {
+      w: 160, h: 40, fontSize: '16px',
       bg: 0x3a2c12, bgHover: 0x62481e, border: 0xffbb66, fg: '#ffe6c2',
       onClick: () => this.scene.start('LeaderboardScene'),
+    });
+    mkButton(this, GW / 2 + 88, 558, '遊び方', {
+      w: 160, h: 40, fontSize: '16px',
+      bg: 0x12253a, bgHover: 0x1e3f62, border: 0x66bbff, fg: '#c2e2ff',
+      onClick: () => this._showHowToPlay(),
     });
 
     // 音量UI
@@ -85,6 +90,55 @@ class TitleScene extends Phaser.Scene {
 
     // スペースキーでも開始
     this.input.keyboard.once('keydown-SPACE', () => this._start());
+  }
+
+  // スコアの仕組みを説明するオーバーレイ（どの行動が得点になるかを共有する）
+  _showHowToPlay() {
+    if (this._howTo) return; // 二重表示防止
+    const c = this.add.container(0, 0).setDepth(100);
+    this._howTo = c;
+
+    const veil = this.add.rectangle(GW / 2, GH / 2, GW, GH, 0x000000, 0.86);
+    veil.setInteractive(); // 背面のボタンへのタップを遮断
+    c.add(veil);
+
+    c.add(TXT(this, GW / 2, 66, 'スコアのしくみ', {
+      fontSize: '26px', color: '#ffdd66', fontStyle: 'bold',
+      stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5));
+
+    const lines = [
+      ['敵を撃破', '基礎点 × コンボ倍率(最大x8)'],
+      ['', '連続撃破でコンボ継続(約1秒)'],
+      ['ボス戦', 'ダメージ+撃破+速攻ボーナス'],
+      ['', '速く倒すほど高得点!'],
+      ['弾かすり', '敵弾スレスレ回避 +15'],
+      ['弾消し', 'クリア時に残った敵弾が★に +50/個'],
+      ['ノーダメージ', 'ウェーブ/ボスを無傷で突破 +1500'],
+      ['強化MAX後', '同じアイテムはスコアに +500'],
+      ['金色の敵', '倒すと必ずアイテムを落とす'],
+      ['ほっぺ♥', '弾が命中時に破裂して周囲を攻撃'],
+      ['ビーム砲★', '画面右下のボタンで発動(超レア)'],
+      ['難易度倍率', 'EASY x0.5 / NORMAL x1 / HARD x1.5 / EXTREME x2'],
+    ];
+    let y = 118;
+    lines.forEach(([head, body]) => {
+      if (head) {
+        c.add(TXT(this, 30, y, head, {
+          fontSize: '15px', color: '#66ddff', fontStyle: 'bold',
+        }).setOrigin(0, 0.5));
+      }
+      c.add(TXT(this, 150, y, body, {
+        fontSize: '14px', color: '#ffffff',
+      }).setOrigin(0, 0.5));
+      y += 34;
+    });
+
+    c.add(mkButton(this, GW / 2, y + 30, 'とじる', {
+      w: 150, h: 44, fontSize: '17px',
+      bg: 0x333344, bgHover: 0x4a4a66, border: 0xaaaacc, fg: '#ffffff',
+      onClick: () => { c.destroy(); this._howTo = null; },
+    }));
   }
 
   _makeVolumeUI(y) {

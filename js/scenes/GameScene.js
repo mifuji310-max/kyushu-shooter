@@ -8,13 +8,15 @@ class GameScene extends Phaser.Scene {
     this.diffKey = DIFFICULTY[key] ? key : 'NORMAL';
     this.diff = DIFFICULTY[this.diffKey];
     this.registry.set('difficulty', this.diffKey); // リトライ時に引き継ぐ
+    // ステージ（将来の九州各県拡張はSTAGESに足すだけ）
+    this.stage = STAGES[(data && data.stageIndex) || this.registry.get('stageIndex') || 0] || STAGES[0];
   }
 
   preload() {
     // 読み込み済みならスキップされる。画像URLにも?v=を付け、更新時にブラウザの
     // 画像キャッシュ(JSと違いキャッシュバスターが無かった)で古い絵が出続けるのを防ぐ
     const load = (k, f) => { if (!this.textures.exists(k)) this.load.image(k, f + '?v=' + VERSION); };
-    load('bg_kumamoto3', 'img/kumamoto_background3.png');
+    load(this.stage.bgKey, this.stage.bgFile);
     load('player_img', 'img/player.png');
     load('enemy_renkon_img', 'img/enemy_renkon.png');
     load('enemy_chip_img', 'img/enemy_IC.png');
@@ -48,11 +50,14 @@ class GameScene extends Phaser.Scene {
     this.powerLevel = 1;   // 団子: 本数
     this.spreadLv   = 0;   // 拡散: 扇の広がり/本数
     this.bigLv      = 0;   // 大玉: サイズ/威力/貫通
+    this.heartLv    = 0;   // ほっぺ: 命中時にハートが破裂して拡散ダメージ
     this.shieldHits = 0;
     this.beamCharges = 0;  // レアアイテム: ビーム砲の残り回数
     this._beamUntil  = 0;  // ビーム発射中の終了時刻
     this._nextFireAt = 0;
     this.waveTimers = {};
+    this._killsSinceDrop = 0;    // 天井システム: ドロップ無し撃破数
+    this._segmentDamaged = false; // 現在のウェーブ/ボス戦で被弾したか（ノーダメボーナス用）
 
     this._makeTextures();
     this._makeBackground();
@@ -82,6 +87,7 @@ class GameScene extends Phaser.Scene {
     this._updateEnemies(time, delta);
     this._updateBoss(time, delta);
     this._checkWaveClear();
+    this._updateMagnetAndGraze(delta);
     this._updateUI();
     this._cleanupOffscreen();
 
@@ -107,6 +113,8 @@ class GameScene extends Phaser.Scene {
     this._texEnemyBullet();
     this._texFireball();
     this._texBeamSegment();
+    this._texHeart();
+    this._texScoreStar();
     this._texJintaiko();
     this._texKingyo();
     this._texKyoryu();
@@ -193,6 +201,15 @@ class GameScene extends Phaser.Scene {
       const s1 = this._polyPoints(6, 8, 3.2, 4, 0);
       const s2 = this._polyPoints(26, 22, 3.2, 4, 0);
       g.fillStyle(0xffe066).fillPoints(s1, true).fillPoints(s2, true);
+    });
+
+    // くまモンのほっぺ: 赤い丸＋白ハート（取るとハート弾＝命中時破裂）
+    this._gTex('item_cheek', 32, 32, g => {
+      outline(g, 3).fillStyle(0xe53946).fillCircle(16, 16, 13).strokeCircle(16, 16, 13);
+      g.fillStyle(0xffffff, 1);
+      g.fillCircle(12.5, 13.5, 3.4);
+      g.fillCircle(19.5, 13.5, 3.4);
+      g.fillTriangle(9.3, 15.4, 22.7, 15.4, 16, 23.5);
     });
   }
 
@@ -295,6 +312,31 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(0x00e5ff, 0.35).fillRoundedRect(0, 0, 26, 46, 8);   // 外グロー
       g.fillStyle(0x4df3ff, 0.95).fillRoundedRect(5, 0, 16, 46, 6);   // 本体
       g.fillStyle(0xffffff, 1).fillRoundedRect(10, 0, 6, 46, 3);      // 白い芯
+    });
+  }
+
+  // ハート弾（ほっぺ効果）と破裂の破片
+  _texHeart() {
+    // ハート型: 2つの円 + 下向き三角
+    this._gTex('bullet_heart', 16, 16, g => {
+      g.fillStyle(0xff6b9d, 1);
+      g.fillCircle(5.5, 5.5, 4);
+      g.fillCircle(10.5, 5.5, 4);
+      g.fillTriangle(1.6, 7.5, 14.4, 7.5, 8, 15);
+      g.fillStyle(0xffd0e0, 1).fillCircle(5, 4.5, 1.6); // ハイライト
+    });
+    this._gTex('heart_frag', 8, 8, g => {
+      g.fillStyle(0xff8fb3, 0.5).fillCircle(4, 4, 4);
+      g.fillStyle(0xff6b9d, 1).fillCircle(4, 4, 2.5);
+    });
+  }
+
+  // クリア時に敵弾が変化する得点の★
+  _texScoreStar() {
+    this._gTex('score_star', 14, 14, g => {
+      const pts = this._polyPoints(7, 7, 6.4, 5, -Math.PI / 2);
+      g.fillStyle(0xffe066, 1).fillPoints(pts, true);
+      g.fillStyle(0xfff8cc, 1).fillCircle(7, 7, 2);
     });
   }
 
@@ -489,9 +531,9 @@ class GameScene extends Phaser.Scene {
 
   _makeBackground() {
     // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
-    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'bg_kumamoto3').setDepth(0);
+    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, this.stage.bgKey).setDepth(0);
     // 画像の実幅からタイル倍率を算出（画像を差し替えても自動追従）
-    const srcW = this.textures.get('bg_kumamoto3').getSourceImage().width || 853;
+    const srcW = this.textures.get(this.stage.bgKey).getSourceImage().width || 853;
     const s = GW / srcW;
     this._bg.tileScaleX = s;
     this._bg.tileScaleY = s;
@@ -582,6 +624,20 @@ class GameScene extends Phaser.Scene {
       fontSize: '18px', fontFamily: 'sans-serif', color: '#ffcc00',
       stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(36).setAlpha(0);
+
+    // ビーム砲の発動ボタン（チャージがある時だけ表示・タップで発動）
+    // 操作エリア外のプレイ画面右下に置き、移動タップと絶対に干渉しないようにする
+    const bx = GW - 38, by = PLAY_H - 92;
+    this._beamBtn = this.add.container(bx, by).setDepth(37).setVisible(false);
+    const bbBg = this.add.circle(0, 0, 26, 0x00394d, 0.85).setStrokeStyle(3, 0x66eaff);
+    const bbTxt = TXT(this, 0, -2, '★', { fontSize: '22px', color: '#66eaff' }).setOrigin(0.5);
+    const bbCnt = TXT(this, 0, 15, '', { fontSize: '11px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+    this._beamBtn.add([bbBg, bbTxt, bbCnt]);
+    this._beamBtnCnt = bbCnt;
+    bbBg.setInteractive({ useHandCursor: true });
+    bbBg.on('pointerdown', () => this._tryStartBeam());
+    this.tweens.add({ targets: this._beamBtn, scaleX: 1.1, scaleY: 1.1,
+      duration: 500, yoyo: true, repeat: -1 });
   }
 
   _setupTouch() {
@@ -596,10 +652,12 @@ class GameScene extends Phaser.Scene {
         this._touch.id = ptr.id;
         this._touch.startX = ptr.worldX;
         this._touch.playerStartX = this.player.x;
-        this._tryStartBeam();
       }
     });
-    this._fireKey.on('down', () => this._tryStartBeam());
+    // ビームは専用ボタン（_makeUI）で発動する。以前はタップのたびに発動して
+    // 移動のための指置き直しで貴重なチャージを浪費していた。PCはBキー。
+    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B)
+      .on('down', () => this._tryStartBeam());
     this.input.on('pointermove', ptr => {
       if (ptr.id === this._touch.id && ptr.isDown) {
         const nx = this._touch.playerStartX + (ptr.worldX - this._touch.startX);
@@ -632,7 +690,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  // ─── WAVES（3ラウンド構成の状態機械）────────────────────
+  // ─── WAVES（4ラウンド構成の状態機械）────────────────────
 
   _startWave(index) {
     if (this.gameEnded) return;
@@ -640,10 +698,12 @@ class GameScene extends Phaser.Scene {
     this.waveIndex = index;
     this._waveSpawnsLeft = 0;
     this.waveTimers = {};
+    this._segmentDamaged = false; // ノーダメボーナスの区間開始
+    this._carrierPending = true;  // このウェーブ最初の敵を「運び屋」にする（確定ドロップ）
 
     this._banner('WAVE ' + (index + 1), '#66ddff');
 
-    STAGE_WAVES[index].forEach((grp, gi) => {
+    this.stage.waves[index].forEach((grp, gi) => {
       this._waveSpawnsLeft += grp.count;
       const begin = () => {
         if (this.gameEnded || this.mode !== 'wave') return;
@@ -663,7 +723,73 @@ class GameScene extends Phaser.Scene {
     if (this._waveSpawnsLeft > 0) return;
     if (this.enemies.countActive(true) > 0) return;
     this.mode = 'boss-incoming';
+    this._cancelEnemyBullets();   // 残った敵弾を★に変換（危険→報酬）
+    this._awardNoDamageBonus();
     this.time.delayedCall(700, () => this._startBoss(this.waveIndex + 1));
+  }
+
+  // 画面上の敵弾をすべて★に変えて自機へ吸い込み、1個ごとに加点する演出
+  _cancelEnemyBullets() {
+    const bullets = this.enemyBullets.getChildren().slice();
+    if (bullets.length) SFX.powerup();
+    bullets.forEach((b, i) => {
+      const star = this.add.image(b.x, b.y, 'score_star').setDepth(20);
+      b.destroy();
+      this.tweens.add({
+        targets: star, x: this.player.x, y: this.player.y,
+        duration: 320 + i * 12, ease: 'Cubic.easeIn',
+        onComplete: () => {
+          star.destroy();
+          this.score += this._gain(BALANCE.bulletCancelScore);
+        },
+      });
+    });
+  }
+
+  _awardNoDamageBonus() {
+    if (this._segmentDamaged) return;
+    const pts = this._gain(BALANCE.noDamageBonus);
+    this.score += pts;
+    // 撃破ボーナスの表示と重ならないよう少し遅らせて出す
+    this.time.delayedCall(1300, () => {
+      if (!this.gameEnded) this._showPickupMsg('ノーダメージ +' + pts.toLocaleString(), '#aaffee');
+    });
+  }
+
+  // 難易度倍率を適用したスコアを返す（全ボーナス共通）
+  _gain(points) {
+    return Math.round(points * this.diff.scoreMul);
+  }
+
+  // アイテム自動吸引＋敵弾グレイズ（かすり）判定
+  _updateMagnetAndGraze(delta) {
+    const px = this.player.x, py = this.player.y;
+
+    // マグネット: 近くのアイテムが自機に吸い寄せられる（取り逃しストレスの解消）
+    this.items.getChildren().forEach(it => {
+      const d = Phaser.Math.Distance.Between(it.x, it.y, px, py);
+      if (d < BALANCE.magnetRadius && d > 1) {
+        const a = Phaser.Math.Angle.Between(it.x, it.y, px, py);
+        it.setVelocity(Math.cos(a) * BALANCE.magnetSpeed, Math.sin(a) * BALANCE.magnetSpeed);
+      }
+    });
+
+    // グレイズ: 敵弾スレスレをかわすと加点（1弾につき1回）。攻めた回避が報われる
+    if (!this.invincible && !this.gameEnded) {
+      this.enemyBullets.getChildren().forEach(eb => {
+        if (eb._grazed) return;
+        const d = Phaser.Math.Distance.Between(eb.x, eb.y, px, py);
+        const radius = BALANCE.grazeRadius + (eb.isFireball ? 12 : 0);
+        if (d < radius) {
+          eb._grazed = true;
+          this.score += this._gain(BALANCE.grazeScore);
+          // 小さな金色スパークで「かすった」ことを伝える
+          const sp = this.add.circle(eb.x, eb.y, 5, 0xffe066, 0.9).setDepth(21);
+          this.tweens.add({ targets: sp, scale: 2.2, alpha: 0, duration: 220,
+            onComplete: () => sp.destroy() });
+        }
+      });
+    }
   }
 
   _banner(text, color) {
@@ -692,6 +818,15 @@ class GameScene extends Phaser.Scene {
     e.elapsed = 0;
     e.lastShot = 0;
     e.baseX = x;
+
+    // 運び屋: 各ウェーブ最初の1体は金色に光り、倒すと必ず強化をドロップする。
+    // 「序盤にアイテムを引けるかが完全な運」だった問題のスタートライン揃え。
+    if (this._carrierPending) {
+      this._carrierPending = false;
+      e.isCarrier = true;
+      e.setTint(0xffd54f);
+      e.score = Math.round(e.score * 1.5);
+    }
 
     if (isImg) {
       // 表示サイズを cfg に合わせ、当たり判定は画像内の中身(cw/ch)に合わせて中央配置
@@ -773,22 +908,29 @@ class GameScene extends Phaser.Scene {
     this.boss.setDisplaySize(172, 172);
     this.boss.body.setSize(this.boss.width * 0.62, this.boss.height * 0.56);
     this.boss.body.setOffset(this.boss.width * 0.19, this.boss.height * 0.22);
-    this.boss.bossHP = Math.round(this.bossMaxHP * BOSS_HP_FACTORS[phaseNum - 1]);
+    this.boss.bossHP = Math.round(this.bossMaxHP * this.stage.bossHpFactors[phaseNum - 1]);
     this.boss.bossMaxHP = this.boss.bossHP; // このボスの最大HP（バー用）
     this.boss.phase = phaseNum;
     this.boss.elapsed = 0;
-    this.boss.lastShot = 0;
-    this.boss.lastCharge = 0;
-    this.boss.lastFireball = 0;
     this.boss.entering = true; // 降臨中は_updateBossで動かさない
     this.bossGroup.add(this.boss);
     this._bossHpContainer.setVisible(true);
+    this._segmentDamaged = false; // ボス戦のノーダメ判定区間を開始
 
-    // ジワーッと降臨（ゆっくりイージング・画面振動なし）。フェーズ3は暗転の頂点から現れる
+    // ジワーッと降臨（ゆっくりイージング・画面振動なし）。最終形態は暗転の頂点から現れる
     this.tweens.add({
       targets: this.boss, y: this._bossY, duration: 2800, ease: 'Sine.easeInOut',
       delay: isFinal ? 900 : 500,
-      onComplete: () => { if (this.boss) this.boss.entering = false; },
+      onComplete: () => {
+        if (!this.boss) return;
+        this.boss.entering = false;
+        // 攻撃タイマーは降臨完了時刻から起算（登場直後の即撃ちを防ぐ）
+        const now = this.time.now;
+        this.boss.lastShot = now;
+        this.boss.lastFireball = now;
+        this.boss.lastCharge = now;
+        this._bossStartAt = now; // 速攻ボーナス計測開始
+      },
     });
   }
 
@@ -818,7 +960,7 @@ class GameScene extends Phaser.Scene {
       b.lastFireball = time;
       this._bossFireball();
     }
-    if (b.phase >= 3 && time - b.lastCharge > 4000) {
+    if (b.phase >= 3 && time - b.lastCharge > BALANCE.bossChargeInterval) {
       b.lastCharge = time;
       this._bossCharge();
     }
@@ -857,7 +999,7 @@ class GameScene extends Phaser.Scene {
     if (!b) return;
     const bx = b.x, by = b.y + 50;
     const a = Phaser.Math.Angle.Between(bx, by, this.player.x, this.player.y);
-    const speed = 130;
+    const speed = BALANCE.fireballSpeed;
     const fb = this.enemyBullets.create(bx, by, 'boss_fireball');
     fb.setDepth(7);
     fb.setVelocity(Math.cos(a) * speed, Math.sin(a) * speed);
@@ -893,18 +1035,24 @@ class GameScene extends Phaser.Scene {
 
   _tryDropItem(x, y) {
     // レアなビーム砲は難易度に関係ない超低確率の独立抽選（他のドロップと競合しない）
-    if (Math.random() < 0.012) {
+    if (Math.random() < BALANCE.beamDropRate) {
       this._spawnItem('item_beam', x, y);
+      this._killsSinceDrop = 0;
       return;
     }
-    const r = Math.random();
     const d = this.diff;
-    if (r < d.healDrop) {
+    // 天井システム: 一定数倒してドロップ無しなら次は確定（引きの波を平滑化）
+    const pityHit = this._killsSinceDrop >= BALANCE.pityKills;
+    const r = Math.random();
+    const pool = ['item_power', 'item_power', 'item_spread', 'item_big', 'item_barrier', 'item_cheek'];
+    if (!pityHit && r < d.healDrop) {
       this._spawnItem('item_heal', x, y);
-    } else if (r < d.healDrop + d.powerDrop) {
-      // 強化系をランダム抽選（団子=強化を出やすめに）
-      const pool = ['item_power', 'item_power', 'item_spread', 'item_big', 'item_barrier'];
+      this._killsSinceDrop = 0;
+    } else if (pityHit || r < d.healDrop + d.powerDrop) {
       this._spawnItem(Phaser.Utils.Array.GetRandom(pool), x, y);
+      this._killsSinceDrop = 0;
+    } else {
+      this._killsSinceDrop++;
     }
   }
 
@@ -943,24 +1091,27 @@ class GameScene extends Phaser.Scene {
     return this._touch.id !== null || (this._fireKey && this._fireKey.isDown);
   }
 
-  // レアアイテム「ビーム砲」を発射開始（タップ/スペースの押下エッジで呼ばれる）
+  // レアアイテム「ビーム砲」を発射開始（専用ボタン/Bキーの押下で呼ばれる）
   _tryStartBeam() {
     if (this.gameEnded || this.beamCharges <= 0 || this.time.now < this._beamUntil) return;
     this.beamCharges--;
-    this._beamUntil = this.time.now + 1300;
+    this._beamUntil = this.time.now + BALANCE.beamDuration;
     SFX.barrier();
   }
 
   _playerFire() {
-    if (this.gameEnded || !this._isFiring()) return;
+    if (this.gameEnded) return;
     const now = this.time.now;
     if (now < this._nextFireAt) return;
 
+    // ビームはボタン発動なので、タップしていなくても発射中は撃ち続ける
     if (now < this._beamUntil) {
-      this._nextFireAt = now + 55; // ビーム中は高速連射の貫通弾で「太い光線」に見せる
+      this._nextFireAt = now + BALANCE.beamFireInterval; // 高速連射の貫通弾で「太い光線」に見せる
       this._fireBeamSegment();
       return;
     }
+
+    if (!this._isFiring()) return;
 
     this._nextFireAt = now + (110 + this.bigLv * 45); // 大玉ほど連射は遅い
     SFX.shoot();
@@ -994,15 +1145,16 @@ class GameScene extends Phaser.Scene {
     b.setDepth(6).setVelocity(0, -900);
     b.body.setSize(b.width * 0.8, b.height);
     b.body.setOffset(b.width * 0.1, 0);
-    b.damage = 4;
+    b.damage = BALANCE.beamDmg;
     b.pierceLeft = 99; // 実質無制限貫通
   }
 
-  // 1発生成。大玉Lvでサイズ・威力・貫通が上がる。
+  // 1発生成。大玉Lvでサイズ・威力・貫通が上がる。ほっぺLvがあれば命中時に破裂。
   _fireBullet(x, y, vx, vy) {
     const lv = this.bigLv;
+    let b;
     if (lv > 0) {
-      const b = this.playerBullets.create(x, y, 'bullet_big');
+      b = this.playerBullets.create(x, y, 'bullet_big');
       b.setDepth(6).setVelocity(vx, vy);
       b.setScale(0.7 + lv * 0.22);
       b.body.setSize(b.width * 0.62, b.height * 0.62);
@@ -1010,13 +1162,15 @@ class GameScene extends Phaser.Scene {
       b.damage = 1 + lv;      // 2 / 3 / 4
       b.pierceLeft = lv;      // 1 / 2 / 3 体貫通
     } else {
-      const b = this.playerBullets.create(x, y, 'bullet');
+      // ほっぺLvがあれば弾の見た目もハートに
+      b = this.playerBullets.create(x, y, this.heartLv > 0 ? 'bullet_heart' : 'bullet');
       b.setDepth(6).setVelocity(vx, vy);
       b.body.setSize(b.width * 0.5, b.height * 0.8);
       b.body.setOffset(b.width * 0.25, b.height * 0.1); // 見た目の中心に判定を合わせる
       b.damage = 1;
       b.pierceLeft = 0;
     }
+    if (this.heartLv > 0) b.heartBurst = this.heartLv; // 命中時に破裂して拡散
   }
 
   _updateEnemies(time, delta) {
@@ -1073,16 +1227,21 @@ class GameScene extends Phaser.Scene {
       hpRatio > 0.5 ? C.HP_GREEN : hpRatio > 0.25 ? C.HP_YELLOW : C.HP_RED
     );
 
-    // パワー/拡散/大玉/バリア/ビーム砲を合成表示
+    // パワー/拡散/大玉/ほっぺ/バリアを合成表示
     let pt = 'P' + this.powerLevel;
     if (this.spreadLv > 0) pt += ' 拡' + this.spreadLv;
     if (this.bigLv > 0) pt += ' 玉' + this.bigLv;
+    if (this.heartLv > 0) pt += ' ♥' + this.heartLv;
     if (this.shieldHits > 0) pt += ' 🛡' + this.shieldHits;
-    if (this.beamCharges > 0) pt += ' ★' + this.beamCharges;
     const beaming = this.time.now < this._beamUntil;
     this._powerText.setText(pt).setColor(
-      beaming ? '#66eaff' : this.bigLv > 0 ? '#ff80ab' : this.spreadLv > 0 ? '#ffb060' : '#ffcc00'
+      beaming ? '#66eaff' : this.heartLv > 0 ? '#ff6b9d' : this.bigLv > 0 ? '#ff80ab' : this.spreadLv > 0 ? '#ffb060' : '#ffcc00'
     );
+
+    // ビームボタン: チャージがある時だけ表示（発動中は隠す）
+    const showBeam = this.beamCharges > 0 && !beaming && !this.gameEnded;
+    this._beamBtn.setVisible(showBeam);
+    if (showBeam) this._beamBtnCnt.setText('×' + this.beamCharges);
 
     if (this.bossActive && this.boss && this.boss.active) {
       const bRatio = Phaser.Math.Clamp(this.boss.bossHP / this.boss.bossMaxHP, 0, 1);
@@ -1111,6 +1270,12 @@ class GameScene extends Phaser.Scene {
     enemy.hp -= (bullet.damage || 1);
     this._flashWhite(enemy);
 
+    // ほっぺ効果: 命中したハートが破裂し、破片が周囲へ拡散（1弾1破裂・破片は再破裂しない）
+    if (bullet.heartBurst && !bullet.isFragment) {
+      this._spawnHeartBurst(bullet.x, bullet.y, enemy);
+      bullet.heartBurst = 0;
+    }
+
     if (bullet.pierceLeft && bullet.pierceLeft > 0) {
       bullet.pierceLeft--;
       (bullet._hit || (bullet._hit = new Set())).add(enemy);
@@ -1122,16 +1287,45 @@ class GameScene extends Phaser.Scene {
       this._addScore(enemy.score);
       this._explode(enemy.x, enemy.y);
       SFX.explosion();
-      this._tryDropItem(enemy.x, enemy.y);
+      if (enemy.isCarrier) {
+        // 運び屋は必ず強化をドロップ（スタートライン揃え）
+        this._spawnItem(Phaser.Utils.Array.GetRandom(
+          ['item_power', 'item_spread', 'item_big', 'item_cheek']), enemy.x, enemy.y);
+        this._killsSinceDrop = 0;
+      } else {
+        this._tryDropItem(enemy.x, enemy.y);
+      }
       this.tweens.killTweensOf(enemy);
       enemy.destroy();
     }
   }
 
+  // ハート破裂: 命中点から破片を放射状に飛ばす（ほっぺLvで数が増える）
+  _spawnHeartBurst(x, y, sourceEnemy) {
+    const n = BALANCE.heartFragBase + this.heartLv * 2;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
+      const f = this.playerBullets.create(x, y, 'heart_frag');
+      f.setDepth(6);
+      f.setVelocity(Math.cos(a) * BALANCE.heartFragSpeed, Math.sin(a) * BALANCE.heartFragSpeed);
+      f.body.setSize(f.width * 0.8, f.height * 0.8);
+      f.body.setOffset(f.width * 0.1, f.height * 0.1);
+      f.damage = 1;
+      f.pierceLeft = 0;
+      f.isFragment = true;
+      f._hit = new Set([sourceEnemy]); // 破裂元の敵には当てない（二重取り防止）
+      this.time.delayedCall(BALANCE.heartFragLifeMs, () => { if (f.active) f.destroy(); });
+    }
+    SFX.tick();
+  }
+
   _onBulletHitBoss(bullet, boss) {
+    if (bullet.isFragment) { bullet.destroy(); return; } // 破片はボスに無効（威力バランス）
+    const dmg = bullet.damage || 1;
     bullet.destroy(); // 単体ボスでは貫通させず必ず消す（多重ヒット防止）
     if (boss.entering || boss.defeated) return; // 降臨中・撃破処理中は無敵
-    boss.bossHP -= (bullet.damage || 1);
+    boss.bossHP -= dmg;
+    this.score += this._gain(dmg * BALANCE.bossDmgScore); // ボス戦もスコアになる
     this._flashWhite(boss);
     if (boss.bossHP <= 0) this._bossEncounterDefeated();
   }
@@ -1142,7 +1336,7 @@ class GameScene extends Phaser.Scene {
   _onEnemyBulletHitPlayer(a, b) {
     if (this.invincible || this.gameEnded) return;
     const bullet = (a === this.player) ? b : a;
-    const dmg = bullet.isFireball ? 26 : 10; // 火の玉は大きく重い一撃
+    const dmg = bullet.isFireball ? BALANCE.fireballDmg : 10; // 火の玉は大きく重い一撃
     bullet.destroy();
     this._damagePlayer(Math.round(dmg * this.diff.dmgMul));
   }
@@ -1157,18 +1351,32 @@ class GameScene extends Phaser.Scene {
 
   _onPlayerGetItem(a, b) {
     const item = (a === this.player) ? b : a;
+    // 強化が既にMAXならスコアに変換（終盤に拾うアイテムも無駄にならない）
+    const maxed = () => {
+      const pts = this._gain(BALANCE.maxedItemScore);
+      this.score += pts;
+      this._showPickupMsg('MAX! +' + pts.toLocaleString(), '#ffee88');
+    };
     switch (item.itemType) {
       case 'item_power':
-        this.powerLevel = Math.min(5, this.powerLevel + 1);
+        if (this.powerLevel >= 5) { maxed(); break; }
+        this.powerLevel++;
         this._showPickupMsg('パワー Lv.' + this.powerLevel, '#ffcc00');
         break;
       case 'item_spread':
-        this.spreadLv = Math.min(4, this.spreadLv + 1);
+        if (this.spreadLv >= 4) { maxed(); break; }
+        this.spreadLv++;
         this._showPickupMsg('拡散 Lv.' + this.spreadLv, '#ff9800');
         break;
       case 'item_big':
-        this.bigLv = Math.min(3, this.bigLv + 1);
+        if (this.bigLv >= 3) { maxed(); break; }
+        this.bigLv++;
         this._showPickupMsg('大玉 Lv.' + this.bigLv, '#ff80ab');
+        break;
+      case 'item_cheek':
+        if (this.heartLv >= BALANCE.heartMaxLv) { maxed(); break; }
+        this.heartLv++;
+        this._showPickupMsg('ほっぺ♥ Lv.' + this.heartLv + ' 弾が破裂!', '#ff6b9d');
         break;
       case 'item_barrier':
         this.shieldHits = 3;
@@ -1179,7 +1387,8 @@ class GameScene extends Phaser.Scene {
         item.destroy();
         return;
       case 'item_beam':
-        this.beamCharges = Math.min(3, this.beamCharges + 1);
+        if (this.beamCharges >= 3) { maxed(); break; }
+        this.beamCharges++;
         this._showPickupMsg('★ビーム砲 ×' + this.beamCharges, '#66eaff');
         break;
       case 'item_heal': {
@@ -1221,6 +1430,7 @@ class GameScene extends Phaser.Scene {
 
     this.invincible = true;
     this.playerHP = Math.max(0, this.playerHP - amount);
+    this._segmentDamaged = true; // このウェーブ/ボス戦のノーダメボーナスは消滅
     SFX.damage();
 
     // ダメージ表現は画面側のみで行い、自機スプライトには一切触れない。
@@ -1240,7 +1450,7 @@ class GameScene extends Phaser.Scene {
   _addScore(amount) {
     this._combo++;
     const multiplier = Math.min(this._combo, 8);
-    this.score += amount * multiplier;
+    this.score += this._gain(amount * multiplier); // 難易度倍率も適用
 
     if (this._combo >= 3) {
       this._comboText.setText(`${this._combo} COMBO! x${multiplier}`);
@@ -1287,7 +1497,18 @@ class GameScene extends Phaser.Scene {
     this.boss = null;
     this.mode = 'boss-clear';
     this._bossHpContainer.setVisible(false);
-    this.enemyBullets.clear(true, true); // 残弾を掃除
+    this._cancelEnemyBullets(); // 残弾を★に変換して加点（危険→報酬）
+
+    // 撃破ボーナス＋速攻ボーナス（速く倒すほど高得点＝火力ビルドが報われる）
+    const killPts = this._gain(BALANCE.bossKillBonus * wasPhase);
+    const fightSec = (this.time.now - (this._bossStartAt || this.time.now)) / 1000;
+    const speedPts = this._gain(Math.max(0,
+      Math.round(BALANCE.bossSpeedBonusMaxSec - fightSec) * BALANCE.bossSpeedBonusPerSec));
+    this.score += killPts + speedPts;
+    this._showPickupMsg(
+      '撃破 +' + killPts.toLocaleString() + (speedPts > 0 ? '  速攻 +' + speedPts.toLocaleString() : ''),
+      '#ffd54f');
+    this._awardNoDamageBonus();
 
     SFX.bossDefeat();
     this.cameras.main.shake(400, 0.02);
@@ -1314,7 +1535,7 @@ class GameScene extends Phaser.Scene {
     this.gameEnded = true;
     Object.values(this.waveTimers).forEach(t => t && t.remove());
 
-    const finalScore = this.score + (cleared ? 10000 : 0);
+    const finalScore = this.score + (cleared ? this._gain(BALANCE.clearBonus) : 0);
     if (cleared) this.score = finalScore;
     const scoreId = this._saveScore(finalScore);
 

@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.6.1';
+const VERSION = 'v0.7.0';
 
 // カラーパレット
 const C = {
@@ -125,6 +125,48 @@ const STAGE_WAVES = [
 // 各ボス(①②③④)のHP係数（難易度のbossHPに乗算・段階的に強化）
 const BOSS_HP_FACTORS = [1.2, 1.6, 2.0, 2.6];
 
+// ステージ定義（将来の九州各県拡張はここに要素を足すだけにする）
+const STAGES = [
+  {
+    key: 'kumamoto', name: '熊本', bgKey: 'bg_kumamoto3',
+    bgFile: 'img/kumamoto_background3.png',
+    waves: STAGE_WAVES, bossHpFactors: BOSS_HP_FACTORS,
+  },
+];
+
+// ゲームバランス値（調整はすべてここで完結させる）
+const BALANCE = {
+  // ボス
+  fireballDmg: 26,          // 火の玉の被弾ダメージ（通常弾は10）
+  fireballSpeed: 130,
+  bossChargeInterval: 4000, // フェーズ3以降の突進間隔ms
+  bossDmgScore: 5,          // ボスに1ダメージ与えるごとのスコア
+  bossKillBonus: 1500,      // 撃破ボーナス（×フェーズ番号）
+  bossSpeedBonusMaxSec: 30, // この秒数より速く倒すと1秒につき…
+  bossSpeedBonusPerSec: 100, // …これだけ加点
+  // ビーム砲
+  beamDuration: 1300,
+  beamDmg: 4,
+  beamFireInterval: 55,
+  beamDropRate: 0.012,
+  // スコア系
+  grazeRadius: 30,          // 敵弾かすり判定の距離(px)
+  grazeScore: 15,
+  bulletCancelScore: 50,    // クリア時の敵弾→★変換 1個あたり
+  noDamageBonus: 1500,      // ウェーブ/ボスをノーダメ突破
+  maxedItemScore: 500,      // 強化MAX後に同アイテムを取った時の変換スコア
+  clearBonus: 10000,        // ステージクリア
+  // アイテム
+  pityKills: 12,            // この数だけ倒してドロップ無しなら次は確定（天井）
+  magnetRadius: 95,         // アイテム自動吸引の開始距離
+  magnetSpeed: 340,
+  // ほっぺ（ハート弾）
+  heartMaxLv: 3,
+  heartFragBase: 4,         // 破裂時の破片数 = base + lv*2
+  heartFragSpeed: 250,
+  heartFragLifeMs: 300,
+};
+
 // 敵パラメータ（w/h は表示・出現位置の基準サイズ＝正方フレーム）
 const ENEMY_CFG = {
   renkon:   { hp: 2,  score: 100, w: 40, h: 40, speed: 110, label: '辛子蓮根' },
@@ -151,37 +193,33 @@ const PLAYER_MAX_HP = 100;  // NORMAL基準（難易度で上書き）
 // 難易度設定
 // dmgMul: 被ダメージ倍率 / healDrop: 回復ドロップ率 / powerDrop: 強化ドロップ率
 // enemyHpMul: 敵HP倍率 / enemySpeedMul: 敵速度倍率 / shootIntervalMul: 敵発射間隔倍率(小=高頻度)
+// scoreMul: 獲得スコア倍率（高難易度ほどハイスコアが狙える＝ランキングの競技性）
 const DIFFICULTY = {
   EASY: {
     key: 'EASY', label: 'EASY', color: '#5fd35f', desc: 'のんびり練習。回復多め',
-    playerHP: 120, healAmount: 35, dmgMul: 0.6,
+    playerHP: 120, healAmount: 35, dmgMul: 0.6, scoreMul: 0.5,
     healDrop: 0.12, powerDrop: 0.16, bossHP: 140,
     enemyHpMul: 0.8, enemySpeedMul: 0.85, shootIntervalMul: 1.35,
   },
   NORMAL: {
     key: 'NORMAL', label: 'NORMAL', color: '#4fb0ff', desc: '標準的なバランス',
-    playerHP: 100, healAmount: 25, dmgMul: 1.0,
+    playerHP: 100, healAmount: 25, dmgMul: 1.0, scoreMul: 1.0,
     healDrop: 0.05, powerDrop: 0.11, bossHP: 200,
     enemyHpMul: 1.0, enemySpeedMul: 1.0, shootIntervalMul: 1.0,
   },
   HARD: {
     key: 'HARD', label: 'HARD', color: '#ff9d3a', desc: '歯ごたえあり。回復少なめ',
-    playerHP: 80, healAmount: 18, dmgMul: 1.4,
+    playerHP: 80, healAmount: 18, dmgMul: 1.4, scoreMul: 1.5,
     healDrop: 0.03, powerDrop: 0.09, bossHP: 280,
     enemyHpMul: 1.2, enemySpeedMul: 1.15, shootIntervalMul: 0.8,
   },
   EXTREME: {
     key: 'EXTREME', label: 'EXTREME', color: '#ff4466', desc: '死を覚悟せよ',
-    playerHP: 60, healAmount: 12, dmgMul: 1.8,
+    playerHP: 60, healAmount: 12, dmgMul: 1.8, scoreMul: 2.0,
     healDrop: 0.018, powerDrop: 0.07, bossHP: 380,
     enemyHpMul: 1.5, enemySpeedMul: 1.3, shootIntervalMul: 0.62,
   },
 };
 const DIFFICULTY_ORDER = ['EASY', 'NORMAL', 'HARD', 'EXTREME'];
 
-// 武器タイプ（fire: 発射間隔ms）
-const WEAPON = {
-  normal: { label: '通常', color: '#ffeb3b', fire: 110 },
-  spread: { label: '拡散', color: '#ff9800', fire: 150 },
-  big:    { label: '大玉', color: '#ff4081', fire: 280 },
-};
+// （旧WEAPON定義はv0.4.0の累積強化方式への刷新で廃止）
