@@ -54,6 +54,7 @@ class GameScene extends Phaser.Scene {
     this.shieldHits = 0;
     this.beamCharges = 0;  // レアアイテム: ビーム砲の残り回数
     this._beamUntil  = 0;  // ビーム発射中の終了時刻
+    this._beam       = null; // 波動砲スプライト（再スタート時に破棄済み参照を残さない）
     this._nextFireAt = 0;
     this.waveTimers = {};
     this._killsSinceDrop = 0;    // 天井システム: ドロップ無し撃破数
@@ -88,6 +89,7 @@ class GameScene extends Phaser.Scene {
     this._updateBoss(time, delta);
     this._checkWaveClear();
     this._updateMagnetAndGraze(delta);
+    this._updateBeam(time);
     this._updateUI();
     this._cleanupOffscreen();
 
@@ -112,7 +114,7 @@ class GameScene extends Phaser.Scene {
     this._texBullet();
     this._texEnemyBullet();
     this._texFireball();
-    this._texBeamSegment();
+    this._texBeamColumn();
     this._texHeart();
     this._texScoreStar();
     this._texJintaiko();
@@ -306,12 +308,14 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  // レアアイテム「ビーム砲」の1セグメント（連射して太い光線に見せる）
-  _texBeamSegment() {
-    this._gTex('beam_segment', 26, 46, g => {
-      g.fillStyle(0x00e5ff, 0.35).fillRoundedRect(0, 0, 26, 46, 8);   // 外グロー
-      g.fillStyle(0x4df3ff, 0.95).fillRoundedRect(5, 0, 16, 46, 6);   // 本体
-      g.fillStyle(0xffffff, 1).fillRoundedRect(10, 0, 6, 46, 3);      // 白い芯
+  // レアアイテム「ビーム砲」= 波動砲。極太の縦レーザー1本（持続ビーム）
+  _texBeamColumn() {
+    const w = BALANCE.beamWidth, h = PLAY_H;
+    this._gTex('beam_column', w, h, g => {
+      g.fillStyle(0x00e5ff, 0.22).fillRect(0, 0, w, h);                 // 外グロー
+      g.fillStyle(0x4df3ff, 0.55).fillRect(w * 0.16, 0, w * 0.68, h);   // 中間
+      g.fillStyle(0xbff6ff, 0.9).fillRect(w * 0.34, 0, w * 0.32, h);    // 明るい層
+      g.fillStyle(0xffffff, 1).fillRect(w * 0.44, 0, w * 0.12, h);      // 白い芯
     });
   }
 
@@ -625,14 +629,15 @@ class GameScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(36).setAlpha(0);
 
-    // ビーム砲の発動ボタン（チャージがある時だけ表示・タップで発動）
-    // 操作エリア外のプレイ画面右下に置き、移動タップと絶対に干渉しないようにする
-    const bx = GW - 38, by = PLAY_H - 92;
+    // ビーム砲(波動砲)の発動UI。メインの発動は「操作エリアの2連タップ」。
+    // このボタンは残チャージ表示＆タップでも撃てる補助（プレイ画面右下）。
+    const bx = GW - 42, by = PLAY_H - 96;
     this._beamBtn = this.add.container(bx, by).setDepth(37).setVisible(false);
-    const bbBg = this.add.circle(0, 0, 26, 0x00394d, 0.85).setStrokeStyle(3, 0x66eaff);
-    const bbTxt = TXT(this, 0, -2, '★', { fontSize: '22px', color: '#66eaff' }).setOrigin(0.5);
-    const bbCnt = TXT(this, 0, 15, '', { fontSize: '11px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
-    this._beamBtn.add([bbBg, bbTxt, bbCnt]);
+    const bbBg = this.add.circle(0, 0, 30, 0x00394d, 0.85).setStrokeStyle(3, 0x66eaff);
+    const bbTxt = TXT(this, 0, -4, '★', { fontSize: '24px', color: '#66eaff' }).setOrigin(0.5);
+    const bbCnt = TXT(this, 0, 16, '', { fontSize: '12px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+    const bbHint = TXT(this, 0, 40, '2回タップ', { fontSize: '11px', color: '#9fe8ff' }).setOrigin(0.5);
+    this._beamBtn.add([bbBg, bbTxt, bbCnt, bbHint]);
     this._beamBtnCnt = bbCnt;
     bbBg.setInteractive({ useHandCursor: true });
     bbBg.on('pointerdown', () => this._tryStartBeam());
@@ -642,20 +647,24 @@ class GameScene extends Phaser.Scene {
 
   _setupTouch() {
     this._touch = { id: null, startX: 0, playerStartX: GW / 2 };
+    this._tap = { downAt: 0, downX: 0, downY: 0, lastTapAt: -1e6 }; // 2連タップ検出用（初期は十分過去）
     this._cursors = this.input.keyboard.createCursorKeys();
     this._fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     // カメラズーム下では ptr.x/y はバッファ座標になるため worldX/worldY を使う
     this.input.on('pointerdown', ptr => {
       SFX.resume(); // 自動再生制限の解除
+      this._tap.downAt = this.time.now;
+      this._tap.downX = ptr.worldX;
+      this._tap.downY = ptr.worldY;
       if (this._touch.id === null && ptr.worldY >= PLAY_H) {
         this._touch.id = ptr.id;
         this._touch.startX = ptr.worldX;
         this._touch.playerStartX = this.player.x;
       }
     });
-    // ビームは専用ボタン（_makeUI）で発動する。以前はタップのたびに発動して
-    // 移動のための指置き直しで貴重なチャージを浪費していた。PCはBキー。
+    // ビーム(波動砲)は「操作エリアの2連タップ」で発動（PCはBキー）。以前はタップのたびに
+    // 発動して移動の指置き直しでチャージを浪費していたため、素早い2連タップに限定。
     this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B)
       .on('down', () => this._tryStartBeam());
     this.input.on('pointermove', ptr => {
@@ -666,6 +675,19 @@ class GameScene extends Phaser.Scene {
     });
     this.input.on('pointerup', ptr => {
       if (ptr.id === this._touch.id) this._touch.id = null;
+      // タップ判定: 短時間・ほぼ動かさずに離した＝タップ。2連なら波動砲。
+      const now = this.time.now;
+      const dur = now - this._tap.downAt;
+      const moved = Math.abs(ptr.worldX - this._tap.downX) + Math.abs(ptr.worldY - this._tap.downY);
+      const inControl = this._tap.downY >= PLAY_H;
+      if (inControl && dur < 220 && moved < 26) {
+        if (now - this._tap.lastTapAt < BALANCE.beamDoubleTapMs) {
+          this._tryStartBeam();
+          this._tap.lastTapAt = 0;
+        } else {
+          this._tap.lastTapAt = now;
+        }
+      }
     });
   }
 
@@ -1091,12 +1113,65 @@ class GameScene extends Phaser.Scene {
     return this._touch.id !== null || (this._fireKey && this._fireKey.isDown);
   }
 
-  // レアアイテム「ビーム砲」を発射開始（専用ボタン/Bキーの押下で呼ばれる）
+  // レアアイテム「ビーム砲」= 波動砲を発射開始（ボタン/Bキー/2連タップで呼ばれる）
   _tryStartBeam() {
     if (this.gameEnded || this.beamCharges <= 0 || this.time.now < this._beamUntil) return;
     this.beamCharges--;
     this._beamUntil = this.time.now + BALANCE.beamDuration;
     SFX.barrier();
+    this.cameras.main.shake(180, 0.006);
+    // 極太レーザーを1本生成。自機の前方へまっすぐ伸び、持続中は追従する。
+    if (!this._beam) {
+      this._beam = this.add.image(this.player.x, this.player.y, 'beam_column')
+        .setOrigin(0.5, 1).setDepth(5).setBlendMode(Phaser.BlendModes.ADD);
+    }
+    this._beam.setVisible(true).setAlpha(1);
+  }
+
+  // 波動砲の持続処理: 自機に追従し、レーザーの縦帯に重なる敵/ボスへ連続ダメージ
+  _updateBeam(time) {
+    if (!this._beam) return;
+    const active = time < this._beamUntil && !this.gameEnded;
+    if (!active) {
+      if (this._beam.visible) this._beam.setVisible(false);
+      return;
+    }
+    const bx = this.player.x, topY = this.player.y - 30;
+    this._beam.x = bx;
+    this._beam.y = topY;
+    this._beam.setAlpha(0.85 + Math.sin(time / 40) * 0.15); // 明滅で威圧感
+    const half = BALANCE.beamWidth * 0.5;
+
+    const hit = (target, hp) => {
+      if (Math.abs(target.x - bx) > half + (target.displayWidth || 20) * 0.35) return;
+      if (target.y > topY) return; // 自機より前方のみ
+      if (!target._beamNext || time >= target._beamNext) {
+        target._beamNext = time + BALANCE.beamTickMs;
+        this._flashWhite(target);
+        return true;
+      }
+      return false;
+    };
+
+    this.enemies.getChildren().forEach(e => {
+      if (hit(e)) {
+        e.hp -= BALANCE.beamTickDmg;
+        if (e.hp <= 0) {
+          this._addScore(e.score);
+          this._explode(e.x, e.y);
+          if (!e.isCarrier) this._tryDropItem(e.x, e.y);
+          this.tweens.killTweensOf(e);
+          e.destroy();
+        }
+      }
+    });
+    if (this.bossActive && this.boss && this.boss.active && !this.boss.entering && !this.boss.defeated) {
+      if (hit(this.boss)) {
+        this.boss.bossHP -= BALANCE.beamTickDmg;
+        this.score += this._gain(BALANCE.beamTickDmg * BALANCE.bossDmgScore);
+        if (this.boss.bossHP <= 0) this._bossEncounterDefeated();
+      }
+    }
   }
 
   _playerFire() {
@@ -1104,12 +1179,8 @@ class GameScene extends Phaser.Scene {
     const now = this.time.now;
     if (now < this._nextFireAt) return;
 
-    // ビームはボタン発動なので、タップしていなくても発射中は撃ち続ける
-    if (now < this._beamUntil) {
-      this._nextFireAt = now + BALANCE.beamFireInterval; // 高速連射の貫通弾で「太い光線」に見せる
-      this._fireBeamSegment();
-      return;
-    }
+    // 波動砲の発射中は通常弾を止める（レーザーが主役）
+    if (now < this._beamUntil) return;
 
     if (!this._isFiring()) return;
 
@@ -1137,16 +1208,6 @@ class GameScene extends Phaser.Scene {
         this._fireBullet(cx + t * 16, cy, t * 18, -620);
       }
     }
-  }
-
-  // 太いビームの1セグメント。画面全高を貫通する高威力・多段貫通の弾
-  _fireBeamSegment() {
-    const b = this.playerBullets.create(this.player.x, this.player.y - 30, 'beam_segment');
-    b.setDepth(6).setVelocity(0, -900);
-    b.body.setSize(b.width * 0.8, b.height);
-    b.body.setOffset(b.width * 0.1, 0);
-    b.damage = BALANCE.beamDmg;
-    b.pierceLeft = 99; // 実質無制限貫通
   }
 
   // 1発生成。大玉Lvでサイズ・威力・貫通が上がる。ほっぺLvがあれば命中時に破裂。

@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.7.0';
+const VERSION = 'v0.7.1';
 
 // カラーパレット
 const C = {
@@ -144,11 +144,13 @@ const BALANCE = {
   bossKillBonus: 1500,      // 撃破ボーナス（×フェーズ番号）
   bossSpeedBonusMaxSec: 30, // この秒数より速く倒すと1秒につき…
   bossSpeedBonusPerSec: 100, // …これだけ加点
-  // ビーム砲
-  beamDuration: 1300,
-  beamDmg: 4,
-  beamFireInterval: 55,
+  // ビーム砲（波動砲: 一直線の極太レーザーを一定時間持続）
+  beamDuration: 1600,   // 発射持続時間ms
+  beamWidth: 84,        // レーザーの太さpx
+  beamTickDmg: 5,       // 貫通中の敵に与える1tickダメージ
+  beamTickMs: 55,       // 同一敵へのダメージ間隔ms
   beamDropRate: 0.012,
+  beamDoubleTapMs: 320, // この間隔内の2連タップでビーム発動
   // スコア系
   grazeRadius: 30,          // 敵弾かすり判定の距離(px)
   grazeScore: 15,

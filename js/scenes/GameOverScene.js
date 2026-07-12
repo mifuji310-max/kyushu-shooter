@@ -95,16 +95,17 @@ class GameOverScene extends Phaser.Scene {
   }
 
   _createInputOverlay() {
-    // 入力フィールドの背景（見た目）
-    this.add.rectangle(GW / 2, 358, 240, 38, 0x111133).setStrokeStyle(1, 0x4466cc);
+    // 入力フィールドの枠（見た目）。HTML input の描画域(224×36 @ y358)と完全一致させ、
+    // input 側の CSS 枠線は消して二重枠のズレを防ぐ。
+    this.add.rectangle(GW / 2, 358, 224, 36, 0x1a1a44).setStrokeStyle(2, 0x4466cc);
 
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.maxLength = 16;
     inp.placeholder = 'ニックネーム';
     inp.style.cssText = [
-      'position:fixed', 'text-align:center', 'background:#1a1a44', 'color:#ffffff',
-      'border:1px solid #4466cc', 'border-radius:4px', 'padding:2px 8px',
+      'position:fixed', 'text-align:center', 'background:transparent', 'color:#ffffff',
+      'border:none', 'padding:0 8px', 'box-sizing:border-box',
       'outline:none', 'z-index:999',
     ].join(';');
     document.body.appendChild(inp);
