@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.8.0';
+const VERSION = 'v0.8.1';
 
 // カラーパレット
 const C = {
@@ -140,7 +140,7 @@ const BALANCE = {
   depth3dMinScale: 0.62,  // 画面最上部(遠く)での縮小率。1.0で3D効果オフ
   hazeHeight: 150,        // 上部の霞の高さpx
   cloudSpeed: 4.6,        // 雲レイヤーのスクロール速度(地面は2.0)
-  cloudAlpha: 0.5,        // 雲レイヤーの不透明度
+  cloudAlpha: 0.38,       // 雲レイヤーの不透明度（v0.8.1で削減）
 
   // ボス
   fireballDmg: 26,          // 火の玉の被弾ダメージ（通常弾は10）

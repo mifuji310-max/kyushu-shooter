@@ -592,9 +592,9 @@ class GameScene extends Phaser.Scene {
     const size = 256;
     const tex = this.textures.createCanvas('clouds_tex', size, size);
     const ctx = tex.context;
-    // 固定配置（乱数だと毎回ムラが変わるため）。まばらに5つ、視界を邪魔しない濃さで
+    // 固定配置（乱数だと毎回ムラが変わるため）。ごく控えめに2つ（v0.8.1で5→2に削減）
     const blobs = [
-      [40, 30, 46], [190, 70, 58], [90, 140, 40], [230, 190, 50], [20, 220, 44],
+      [60, 50, 50], [210, 180, 56],
     ];
     for (const [x, y, r] of blobs) {
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);
