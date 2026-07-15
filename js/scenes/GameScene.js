@@ -90,6 +90,7 @@ class GameScene extends Phaser.Scene {
     this._checkWaveClear();
     this._updateMagnetAndGraze(delta);
     this._updateBeam(time);
+    this._updateDepthScale();
     this._updateUI();
     this._cleanupOffscreen();
 
@@ -545,6 +546,26 @@ class GameScene extends Phaser.Scene {
     // 自機・敵・弾の視認性確保のため暗めオーバーレイ
     this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000814, 0.34).setDepth(1);
 
+    // ─ 擬似3D演出 ─
+    // 雲レイヤー: 地面より速く流して高度差の視差を出す（敵や自機の上を薄く流れる）
+    this._makeCloudTexture();
+    this._clouds = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, 'clouds_tex')
+      .setDepth(14).setAlpha(BALANCE.cloudAlpha);
+
+    // 上部の霞: 遠くが白くかすむ。敵が霞の中から現れて遠近感が出る
+    if (!this.textures.exists('haze_tex')) {
+      const hz = this.textures.createCanvas('haze_tex', 8, BALANCE.hazeHeight);
+      const hctx = hz.context;
+      const grd = hctx.createLinearGradient(0, 0, 0, BALANCE.hazeHeight);
+      grd.addColorStop(0, 'rgba(207,228,255,0.36)');
+      grd.addColorStop(1, 'rgba(207,228,255,0)');
+      hctx.fillStyle = grd;
+      hctx.fillRect(0, 0, 8, BALANCE.hazeHeight);
+      hz.refresh();
+    }
+    this.add.image(GW / 2, 0, 'haze_tex').setOrigin(0.5, 0)
+      .setDisplaySize(GW, BALANCE.hazeHeight).setDepth(15);
+
     // 操作エリア背景
     this.add.rectangle(GW / 2, GH - CONTROL_H / 2, GW, CONTROL_H, C.CTRL_BG, 0.95).setDepth(20);
     TXT(this, GW / 2, GH - CONTROL_H + 14, '◀  ここでタッチ操作  ▶', {
@@ -561,6 +582,30 @@ class GameScene extends Phaser.Scene {
     const f = Math.min(delta, 26) / 16.667;
     // 前進感を出すため背景を下方向へ流す（tilePositionはテクスチャ座標なのでtileScaleで割る）
     this._bg.tilePositionY -= (2.0 * f) / this._bg.tileScaleY;
+    // 雲は地面より速く流す＝カメラに近い層に見える（視差による擬似3D）
+    this._clouds.tilePositionY -= BALANCE.cloudSpeed * f;
+  }
+
+  // 雲テクスチャ（放射グラデーションの白い塊を散らしたタイル）
+  _makeCloudTexture() {
+    if (this.textures.exists('clouds_tex')) return;
+    const size = 256;
+    const tex = this.textures.createCanvas('clouds_tex', size, size);
+    const ctx = tex.context;
+    // 固定配置（乱数だと毎回ムラが変わるため）。まばらに5つ、視界を邪魔しない濃さで
+    const blobs = [
+      [40, 30, 46], [190, 70, 58], [90, 140, 40], [230, 190, 50], [20, 220, 44],
+    ];
+    for (const [x, y, r] of blobs) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.5)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    tex.refresh();
   }
 
   // ─── SETUP ─────────────────────────────────────────────
@@ -1232,6 +1277,24 @@ class GameScene extends Phaser.Scene {
       b.pierceLeft = 0;
     }
     if (this.heartLv > 0) b.heartBurst = this.heartLv; // 命中時に破裂して拡散
+  }
+
+  // 擬似3D: 画面上(遠く)ほど小さく描画する。Arcade物理のボディはスプライトの
+  // スケールに自動追従するため、見た目と当たり判定は常に一致する（公平性を維持）。
+  // 基準スケールは初回に遅延キャプチャ（setDisplaySize/setScale後の値を基準にする）。
+  // アイテムは脈動tweenとスケールを取り合うため対象外。ボスは迫力優先で対象外。
+  _updateDepthScale() {
+    const min = BALANCE.depth3dMinScale;
+    const apply = obj => {
+      if (!obj.active) return;
+      if (obj._bsx === undefined) { obj._bsx = obj.scaleX; obj._bsy = obj.scaleY; }
+      const t = Phaser.Math.Clamp(obj.y / PLAY_H, 0, 1);
+      const k = min + (1 - min) * t;
+      obj.setScale(obj._bsx * k, obj._bsy * k);
+    };
+    this.enemies.getChildren().forEach(apply);
+    this.enemyBullets.getChildren().forEach(apply);
+    this.playerBullets.getChildren().forEach(apply);
   }
 
   _updateEnemies(time, delta) {
