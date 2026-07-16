@@ -17,6 +17,7 @@ class GameScene extends Phaser.Scene {
     // 画像キャッシュ(JSと違いキャッシュバスターが無かった)で古い絵が出続けるのを防ぐ
     const load = (k, f) => { if (!this.textures.exists(k)) this.load.image(k, f + '?v=' + VERSION); };
     load(this.stage.bgKey, this.stage.bgFile);
+    load(this.stage.bgPlaneKey, this.stage.bgPlaneFile); // Mode7地面用（2枚重ねJPG）
     load('player_img', 'img/player.png');
     load('enemy_renkon_img', 'img/enemy_renkon.png');
     load('enemy_chip_img', 'img/enemy_IC.png');
@@ -535,13 +536,14 @@ class GameScene extends Phaser.Scene {
   // ─── BACKGROUND ────────────────────────────────────────
 
   _makeBackground() {
-    // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
-    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, this.stage.bgKey).setDepth(0);
-    // 画像の実幅からタイル倍率を算出（画像を差し替えても自動追従）
-    const srcW = this.textures.get(this.stage.bgKey).getSourceImage().width || 853;
-    const s = GW / srcW;
-    this._bg.tileScaleX = s;
-    this._bg.tileScaleY = s;
+    // Mode 7風: 空撮写真を「奥に倒した板(Plane)」に貼り、上=遠くが圧縮される
+    // 遠近感を出す。地平線は画面外(上)にあり、遠景の霞と組み合わせて奥行きを出す。
+    // テクスチャは同じ絵の縦2枚重ねで、uvScrollのラップにより継ぎ目なく無限ループする。
+    this._bg = this.add.plane(GW / 2, PLAY_H * BALANCE.mode7Y, this.stage.bgPlaneKey);
+    this._bg.setDepth(0);
+    this._bg.modelRotation.x = BALANCE.mode7TiltRad;
+    this._bg.setScale(BALANCE.mode7ScaleX, BALANCE.mode7ScaleY);
+    this._bg.ignoreDirtyCache = true; // UVスクロールを毎フレーム確実に反映させる
 
     // 自機・敵・弾の視認性確保のため暗めオーバーレイ
     this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000814, 0.34).setDepth(1);
@@ -580,9 +582,10 @@ class GameScene extends Phaser.Scene {
     // FPSに依存しないよう時間ベースで進める。capを26ms(≒1.5フレーム)に絞り、
     // 指を離した瞬間のカクつきによる速度スパイクを抑える。
     const f = Math.min(delta, 26) / 16.667;
-    // 前進感を出すため背景を下方向へ流す（tilePositionはテクスチャ座標なのでtileScaleで割る）
-    this._bg.tilePositionY -= (2.0 * f) / this._bg.tileScaleY;
-    // 雲は地面より速く流す＝カメラに近い層に見える（視差による擬似3D）
+    // Mode7地面: uvScroll(速度設定API)にデルタ補正済みの値を毎フレーム渡す。
+    // 頂点UVの直接変更はMeshのキャッシュに反映されないため使わない（実測で確認済み）。
+    this._bg.uvScroll(0, BALANCE.mode7ScrollUV * f);
+    // 雲は別レイヤーで速めに流す＝高度差の視差
     this._clouds.tilePositionY -= BALANCE.cloudSpeed * f;
   }
 
