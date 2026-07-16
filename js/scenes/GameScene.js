@@ -535,13 +535,21 @@ class GameScene extends Phaser.Scene {
   // ─── BACKGROUND ────────────────────────────────────────
 
   _makeBackground() {
-    // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
-    this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, this.stage.bgKey).setDepth(0);
-    // 画像の実幅からタイル倍率を算出（画像を差し替えても自動追従）
-    const srcW = this.textures.get(this.stage.bgKey).getSourceImage().width || 853;
-    const s = GW / srcW;
-    this._bg.tileScaleX = s;
-    this._bg.tileScaleY = s;
+    // Mode7プロトタイプ: URLに ?m7=grid / ?m7=photo を付けた時だけ横ストリップ遠近を使う。
+    // デフォルト(パラメータ無し)は従来の平面スクロールのまま＝本番プレイヤーに影響なし。
+    this._m7 = new URLSearchParams(location.search).get('m7'); // 'grid' | 'photo' | null
+
+    if (this._m7) {
+      this._makeStripBackground(this._m7 === 'grid' ? this._makeGridTexture() : this.stage.bgKey);
+    } else {
+      // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
+      this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, this.stage.bgKey).setDepth(0);
+      // 画像の実幅からタイル倍率を算出（画像を差し替えても自動追従）
+      const srcW = this.textures.get(this.stage.bgKey).getSourceImage().width || 853;
+      const s = GW / srcW;
+      this._bg.tileScaleX = s;
+      this._bg.tileScaleY = s;
+    }
 
     // 自機・敵・弾の視認性確保のため暗めオーバーレイ
     this.add.rectangle(GW / 2, PLAY_H / 2, GW, PLAY_H, 0x000814, 0.34).setDepth(1);
@@ -580,10 +588,73 @@ class GameScene extends Phaser.Scene {
     // FPSに依存しないよう時間ベースで進める。capを26ms(≒1.5フレーム)に絞り、
     // 指を離した瞬間のカクつきによる速度スパイクを抑える。
     const f = Math.min(delta, 26) / 16.667;
-    // 前進感を出すため背景を下方向へ流す（tilePositionはテクスチャ座標なのでtileScaleで割る）
-    this._bg.tilePositionY -= (2.0 * f) / this._bg.tileScaleY;
+    if (this._m7) {
+      // ストリップ遠近: 全帯にテクスチャ座標で等量を足す。近い帯ほど拡大率が
+      // 大きいため画面上の移動量が大きくなり、自然な奥行きの流れになる
+      this._m7ScrollV -= BALANCE.m7Scroll * f;
+      for (const st of this._strips) st.tilePositionY = st._baseOff + this._m7ScrollV;
+    } else {
+      // 前進感を出すため背景を下方向へ流す（tilePositionはテクスチャ座標なのでtileScaleで割る）
+      this._bg.tilePositionY -= (2.0 * f) / this._bg.tileScaleY;
+    }
     // 雲は地面より速く流す＝カメラに近い層に見える（視差による擬似3D）
     this._clouds.tilePositionY -= BALANCE.cloudSpeed * f;
+  }
+
+  // ─── Mode7ストリップ背景（プロトタイプ・?m7=で有効化）───
+  // 遠近モデル: 消失点 yh(画面外上方) を仮定し、行yの奥行き∝1/(y-yh)。
+  // 各帯の拡大率 s(y)=(y-yh)/(PLAY_H-yh)*bottomScale で、上=圧縮・下=拡大。
+  // テクスチャの参照行 V(y)∝P/(y-yh) を帯ごとに固定オフセットとして持ち、
+  // スクロールは全帯共通の加算値だけ（近い帯は拡大率が大きい分、画面上は速く流れる）。
+  _makeStripBackground(texKey) {
+    const yh = BALANCE.m7VanishY;       // 消失点(画面外上方)
+    const n = BALANCE.m7Strips;
+    const h = PLAY_H / n;
+    const srcW = this.textures.get(texKey).getSourceImage().width;
+
+    // 参照テクスチャ行 V(y) = K/(0-yh) - K/(y-yh)。yとともに増加し(下=手前=大きい行)、
+    // 傾き dV/dy = K/(y-yh)^2 は上ほど大きい=上ほど多くの行を圧縮表示する（遠近）。
+    // Kは「画面全体で見渡す行数 ≈ PLAY_H*1.5」になるよう決める。
+    const span = PLAY_H * 1.5;
+    const K = span / (1 / (0 - yh) - 1 / (PLAY_H - yh));
+    const V = y => K / (0 - yh) - K / (y - yh);
+
+    this._strips = [];
+    this._m7ScrollV = 0;
+    for (let i = 0; i < n; i++) {
+      const yTop = i * h;
+      const yMid = yTop + h / 2;
+      const scale = ((yMid - yh) / (PLAY_H - yh)) * BALANCE.m7BottomScale;
+      const st = this.add.tileSprite(GW / 2, yMid, GW, h, texKey).setDepth(0);
+      st.tileScaleX = scale;
+      st.tileScaleY = scale;
+      st._baseOff = V(yTop);            // この帯の上端が見せるテクスチャ行
+      st.tilePositionY = st._baseOff;
+      st.tilePositionX = (srcW - GW / scale) / 2; // 横は中央を見る（足りない分はラップ）
+      this._strips.push(st);
+    }
+  }
+
+  // 格子模様のデバッグ用テクスチャ（遠近の歪み・スクロール・継ぎ目の確認用）
+  _makeGridTexture() {
+    const key = 'm7_grid';
+    if (this.textures.exists(key)) return key;
+    const size = 512, cell = 64;
+    const tex = this.textures.createCanvas(key, size, size);
+    const ctx = tex.context;
+    for (let gy = 0; gy < size / cell; gy++) {
+      for (let gx = 0; gx < size / cell; gx++) {
+        ctx.fillStyle = (gx + gy) % 2 ? '#3a4a3a' : '#c8d8c8';
+        ctx.fillRect(gx * cell, gy * cell, cell, cell);
+      }
+    }
+    // 向き・ループ確認用の赤ライン(横)と青ライン(縦)
+    ctx.fillStyle = '#e03030';
+    ctx.fillRect(0, 0, size, 6);
+    ctx.fillStyle = '#3060e0';
+    ctx.fillRect(0, 0, 6, size);
+    tex.refresh();
+    return key;
   }
 
   // 雲テクスチャ（放射グラデーションの白い塊を散らしたタイル）

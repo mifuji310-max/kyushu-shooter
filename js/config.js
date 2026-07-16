@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.9.1';
+const VERSION = 'v0.10.0';
 
 // カラーパレット
 const C = {
@@ -141,6 +141,14 @@ const BALANCE = {
   hazeHeight: 150,        // 上部の霞の高さpx
   cloudSpeed: 4.6,        // 雲レイヤーのスクロール速度(地面は2.0)
   cloudAlpha: 0.38,       // 雲レイヤーの不透明度（v0.8.1で削減）
+
+  // Mode7風の地面・横ストリップ方式（?m7=grid / ?m7=photo で有効化。プロトタイプ）
+  // 画面を横帯に分割し、帯ごとに通常のTileSpriteの拡大率を変えて描く。
+  // Mesh(Plane)と違い全て通常2Dスプライトなので、DPRカメラズームと完全互換。
+  m7Strips: 40,          // 帯の本数
+  m7VanishY: -400,       // 消失点のY(画面外上方)。0に近いほど遠近が強い
+  m7BottomScale: 0.75,   // 最下段の拡大率(テクスチャpx→画面px)
+  m7Scroll: 2.2,         // スクロール速度(テクスチャpx/フレーム)
 
   // ボス
   fireballDmg: 26,          // 火の玉の被弾ダメージ（通常弾は10）
