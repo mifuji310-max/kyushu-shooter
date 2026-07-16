@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.8.1';
+const VERSION = 'v0.9.0';
 
 // カラーパレット
 const C = {
@@ -130,6 +130,9 @@ const STAGES = [
   {
     key: 'kumamoto', name: '熊本', bgKey: 'bg_kumamoto3',
     bgFile: 'img/kumamoto_background3.png',
+    // Mode7用: 同じ絵を縦に2枚重ねたJPG（UV 0→0.5でスクロールし0.5で巻き戻すと継ぎ目なし）
+    bgPlaneKey: 'bg_kumamoto3_plane',
+    bgPlaneFile: 'img/kumamoto_bg3_plane.jpg',
     waves: STAGE_WAVES, bossHpFactors: BOSS_HP_FACTORS,
   },
 ];
@@ -139,8 +142,16 @@ const BALANCE = {
   // 擬似3D（見た目のみ。当たり判定はスケールに自動追従して常に一致）
   depth3dMinScale: 0.62,  // 画面最上部(遠く)での縮小率。1.0で3D効果オフ
   hazeHeight: 150,        // 上部の霞の高さpx
-  cloudSpeed: 4.6,        // 雲レイヤーのスクロール速度(地面は2.0)
+  cloudSpeed: 4.6,        // 雲レイヤーのスクロール速度
   cloudAlpha: 0.38,       // 雲レイヤーの不透明度（v0.8.1で削減）
+
+  // Mode 7風の地面（Phaser Planeで奥に倒した板に背景を貼る）
+  // 実測調整済み(プレビューのピクセル解析+目視): 上部=遠くが圧縮されて見える
+  mode7TiltRad: 1.35,     // 奥への倒し角(ラジアン・正の値で上端が奥)
+  mode7ScrollUV: 0.0012,  // 1フレーム(60fps)あたりのUVスクロール量(正=前進)
+  mode7Y: 1.0,            // プレーン中心のY位置(PLAY_H比)
+  mode7ScaleX: 2.6,       // 横スケール(遠近で狭まる分を広げて画面幅を覆う)
+  mode7ScaleY: 1.0,       // 縦スケール
 
   // ボス
   fireballDmg: 26,          // 火の玉の被弾ダメージ（通常弾は10）
