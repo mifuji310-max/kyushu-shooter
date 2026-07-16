@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.8.1';
+const VERSION = 'v0.9.1';
 
 // カラーパレット
 const C = {
