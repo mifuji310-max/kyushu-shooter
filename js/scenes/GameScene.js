@@ -535,14 +535,15 @@ class GameScene extends Phaser.Scene {
   // ─── BACKGROUND ────────────────────────────────────────
 
   _makeBackground() {
-    // Mode7プロトタイプ: URLに ?m7=grid / ?m7=photo を付けた時だけ横ストリップ遠近を使う。
-    // デフォルト(パラメータ無し)は従来の平面スクロールのまま＝本番プレイヤーに影響なし。
-    this._m7 = new URLSearchParams(location.search).get('m7'); // 'grid' | 'photo' | null
+    // Mode7横ストリップ遠近がデフォルト(v0.11.0で昇格・実機確認済み)。
+    // ?m7=grid は格子デバッグ、?m7=flat は旧平面スクロールへの避難ハッチ。
+    const p = new URLSearchParams(location.search).get('m7');
+    this._m7 = (p === 'flat') ? null : (p || 'photo'); // 'grid' | 'photo' | null(平面)
 
     if (this._m7) {
       this._makeStripBackground(this._m7 === 'grid' ? this._makeGridTexture() : this.stage.bgKey);
     } else {
-      // 熊本の空撮写真を縦スクロール（TileSpriteでシームレスにループ）
+      // 旧: 空撮写真をそのまま縦スクロール（TileSpriteでシームレスにループ）
       this._bg = this.add.tileSprite(GW / 2, PLAY_H / 2, GW, PLAY_H, this.stage.bgKey).setDepth(0);
       // 画像の実幅からタイル倍率を算出（画像を差し替えても自動追従）
       const srcW = this.textures.get(this.stage.bgKey).getSourceImage().width || 853;
