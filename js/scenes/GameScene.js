@@ -301,11 +301,11 @@ class GameScene extends Phaser.Scene {
   }
 
   _texEnemyBullet() {
-    // 禍々しい赤オーブ（グロー付き）
-    this._gTex('e_bullet', 14, 14, g => {
-      g.fillStyle(0xff1744, 0.28).fillCircle(7, 7, 7);   // 外グロー
-      g.fillStyle(0xff3060, 0.95).fillCircle(7, 7, 4.5); // 本体
-      g.fillStyle(0xffd9d9, 0.95).fillCircle(5.6, 5.6, 1.8); // ハイライト
+    // 白い発光オーブ。色は setTint で付ける（フェーズ/敵ごとに弾色を変えるため）。
+    this._gTex('e_orb', 14, 14, g => {
+      g.fillStyle(0xffffff, 0.28).fillCircle(7, 7, 7);   // 外グロー
+      g.fillStyle(0xffffff, 0.95).fillCircle(7, 7, 4.5); // 本体
+      g.fillStyle(0xffffff, 1).fillCircle(5.6, 5.6, 1.8); // ハイライト
     });
   }
 
@@ -1017,7 +1017,8 @@ class GameScene extends Phaser.Scene {
   _startBoss(phaseNum) {
     this.bossActive = true;
     this.mode = 'boss';
-    this._bossY = 158; // HPゲージに被らない待機位置（やや上）
+    const cfg = BOSS_PHASES[phaseNum - 1];
+    this._bossY = cfg.y; // フェーズごとの待機位置（大きい形態ほどやや下げてUIとの被りを緩和）
     Object.values(this.waveTimers).forEach(t => t && t.remove());
     this.enemies.clear(true, true);
 
@@ -1044,12 +1045,15 @@ class GameScene extends Phaser.Scene {
 
     this.boss = this.physics.add.sprite(GW / 2, -120, 'boss' + phaseNum);
     this.boss.setDepth(9);
-    this.boss.setDisplaySize(172, 172);
-    this.boss.body.setSize(this.boss.width * 0.62, this.boss.height * 0.56);
-    this.boss.body.setOffset(this.boss.width * 0.19, this.boss.height * 0.22);
+    this.boss.setDisplaySize(cfg.display, cfg.display); // フェーズごとの表示サイズ
+    // 当たり判定は表示比で中央配置（表示に連動して自動スケール＝大きい形態ほど当てやすい）
+    const fw = this.boss.width, fh = this.boss.height;
+    this.boss.body.setSize(fw * cfg.hitW, fh * cfg.hitH);
+    this.boss.body.setOffset(fw * (1 - cfg.hitW) / 2, fh * (1 - cfg.hitH) / 2);
     this.boss.bossHP = Math.round(this.bossMaxHP * this.stage.bossHpFactors[phaseNum - 1]);
     this.boss.bossMaxHP = this.boss.bossHP; // このボスの最大HP（バー用）
     this.boss.phase = phaseNum;
+    this.boss.cfg = cfg;
     this.boss.elapsed = 0;
     this.boss.entering = true; // 降臨中は_updateBossで動かさない
     this.bossGroup.add(this.boss);
@@ -1068,6 +1072,7 @@ class GameScene extends Phaser.Scene {
         this.boss.lastShot = now;
         this.boss.lastFireball = now;
         this.boss.lastCharge = now;
+        this.boss.lastDash = now;
         this._bossStartAt = now; // 速攻ボーナス計測開始
       },
     });
@@ -1083,51 +1088,78 @@ class GameScene extends Phaser.Scene {
     // 同じ時刻・同じ座標から連続的に再開できる（止めないと時間だけ進んで位置が飛ぶ）。
     if (b.charging) return;
     b.elapsed += delta;
+    const cfg = b.cfg;
 
-    const freq = b.phase === 1 ? 0.8 : b.phase === 2 ? 1.1 : b.phase === 3 ? 1.4 : 1.7;
-    const amp  = b.phase >= 3 ? 150 : 120;
-    b.x = GW / 2 + Math.sin(b.elapsed / 1000 * freq) * amp;
-    b.y = b.phase < 3 ? this._bossY : (this._bossY - 8) + Math.sin(b.elapsed / 700) * 18;
-
-    const shootInterval = (b.phase === 1 ? 2200 : b.phase === 2 ? 1700 : b.phase === 3 ? 1300 : 1000) * this.diff.shootIntervalMul;
-    if (time - b.lastShot > shootInterval) {
-      b.lastShot = time;
-      this._bossShoot(b.phase);
+    if (cfg.move === 'erratic') {
+      // ④変則的: 一定間隔でランダム位置へ高速ダッシュ（予測不能）。合間は静止して撃つ
+      if (!b.dashing && time - b.lastDash > cfg.dashEvery) {
+        b.lastDash = time;
+        b.dashing = true;
+        const tx = Phaser.Math.Between(80, GW - 80);
+        const ty = this._bossY + Phaser.Math.Between(-20, 40);
+        this.tweens.add({
+          targets: b, x: tx, y: ty, duration: 360, ease: 'Back.easeOut',
+          onComplete: () => { if (b && b.active) b.dashing = false; },
+        });
+      }
+    } else {
+      // ①②③: 横往復（重い形態は遅く小刻み）。③は上下ゆれで生々しく
+      b.x = GW / 2 + Math.sin(b.elapsed / 1000 * cfg.freq) * cfg.amp;
+      b.y = cfg.bob ? (this._bossY - 8) + Math.sin(b.elapsed / 700) * 16 : this._bossY;
     }
-    // 火の玉: 大きくゆっくり・自機狙い。②以降で登場し、④が最も頻繁
-    if (b.phase >= 2 && time - b.lastFireball > (2600 - b.phase * 300)) {
+
+    if (time - b.lastShot > cfg.shootInterval * this.diff.shootIntervalMul) {
+      b.lastShot = time;
+      this._bossShoot(b);
+    }
+    if (cfg.fireball && time - b.lastFireball > 2200) {
       b.lastFireball = time;
       this._bossFireball();
     }
-    if (b.phase >= 3 && time - b.lastCharge > BALANCE.bossChargeInterval) {
+    if (cfg.charge && time - b.lastCharge > BALANCE.bossChargeInterval) {
       b.lastCharge = time;
       this._bossCharge();
     }
   }
 
-  _bossShoot(phase) {
+  _bossShoot(b) {
     if (!this.boss) return;
-    const bx = this.boss.x, by = this.boss.y + 50;
-    if (phase === 1) {
-      for (let i = -2; i <= 2; i++) {
-        const a = Math.PI / 2 + i * 0.18;
-        this._spawnEnemyBullet(bx, by, Math.cos(a) * 220, Math.sin(a) * 220);
+    const cfg = b.cfg, col = cfg.bulletColor;
+    const bx = b.x, by = b.y + b.displayHeight * 0.26; // 砲口は体格に応じて下げる
+
+    // 下向き扇（上方向の弾は無意味なので下半分＋左右のみに配分）
+    const fanDown = (n, sp) => {
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0.5 : i / (n - 1);
+        const a = Math.PI * (0.08 + 0.84 * t); // 0.08π〜0.92π＝右下〜真下〜左下
+        this._spawnEnemyBullet(bx, by, Math.cos(a) * sp, Math.sin(a) * sp, col);
       }
-    } else if (phase === 2) {
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        this._spawnEnemyBullet(bx, by, Math.cos(a) * 180, Math.sin(a) * 180);
+    };
+    // 自機狙い（念のため下向きに制限）
+    const aim = (spread, count, sp) => {
+      let pa = Phaser.Math.Angle.Between(bx, by, this.player.x, this.player.y);
+      pa = Phaser.Math.Clamp(pa, Math.PI * 0.12, Math.PI * 0.88);
+      for (let i = 0; i < count; i++) {
+        const t = count === 1 ? 0 : (i / (count - 1) - 0.5) * 2;
+        const a = pa + t * spread;
+        this._spawnEnemyBullet(bx, by, Math.cos(a) * sp, Math.sin(a) * sp, col);
       }
-      const pa = Phaser.Math.Angle.Between(bx, by, this.player.x, this.player.y);
-      this._spawnEnemyBullet(bx, by, Math.cos(pa) * 260, Math.sin(pa) * 260);
-    } else {
-      for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * Math.PI * 2;
-        this._spawnEnemyBullet(bx, by, Math.cos(a) * 200, Math.sin(a) * 200);
-      }
-      for (let s = -1; s <= 1; s++) {
-        const pa = Phaser.Math.Angle.Between(bx, by, this.player.x, this.player.y) + s * 0.15;
-        this._spawnEnemyBullet(bx, by, Math.cos(pa) * 280, Math.sin(pa) * 280);
+    };
+
+    switch (cfg.pattern) {
+      case 'aim':       aim(0.34, 5, 220); break;
+      case 'fan8aim':   fanDown(8, 180); aim(0, 1, 260); break;
+      case 'fan12aim3': fanDown(12, 200); aim(0.3, 3, 260); break;
+      case 'spiral': {
+        // 下向きの扇を左右にスイープ＋高速狙い弾（変則的で読みにくい）
+        b.spiralPhase = (b.spiralPhase || 0) + 1;
+        const center = Math.PI / 2 + Math.sin(b.spiralPhase * 0.5) * Math.PI * 0.42;
+        for (const d of [-0.28, 0, 0.28]) {
+          const a = Phaser.Math.Clamp(center + d, Math.PI * 0.06, Math.PI * 0.94); // 下向き限定
+          this._spawnEnemyBullet(bx, by, Math.cos(a) * 210, Math.sin(a) * 210, col);
+        }
+        aim(0, 1, 330); // 速い狙い弾
+        break;
       }
     }
   }
@@ -1136,7 +1168,7 @@ class GameScene extends Phaser.Scene {
   _bossFireball() {
     const b = this.boss;
     if (!b) return;
-    const bx = b.x, by = b.y + 50;
+    const bx = b.x, by = b.y + b.displayHeight * 0.26;
     const a = Phaser.Math.Angle.Between(bx, by, this.player.x, this.player.y);
     const speed = BALANCE.fireballSpeed;
     const fb = this.enemyBullets.create(bx, by, 'boss_fireball');
@@ -1162,9 +1194,10 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  _spawnEnemyBullet(x, y, vx, vy) {
-    const b = this.enemyBullets.create(x, y, 'e_bullet');
+  _spawnEnemyBullet(x, y, vx, vy, color) {
+    const b = this.enemyBullets.create(x, y, 'e_orb');
     b.setDepth(7);
+    b.setTint(color == null ? 0xff3060 : color); // 弾色（未指定は赤）
     b.setVelocity(vx, vy);
     b.body.setSize(6, 6);
     b.body.setOffset((b.width - 6) / 2, (b.height - 6) / 2); // 見た目の中心に判定を合わせる
@@ -1404,7 +1437,8 @@ class GameScene extends Phaser.Scene {
     if (e.y > this.player.y - 30) return;
     let a = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
     a = Phaser.Math.Clamp(a, Math.PI * 0.28, Math.PI * 0.72); // 下向き±約40°に制限
-    this._spawnEnemyBullet(e.x, e.y + offY, Math.cos(a) * speed, Math.sin(a) * speed);
+    const col = ENEMY_BULLET_COLOR[e.enemyType]; // 敵種で弾色を変える（未定義は赤）
+    this._spawnEnemyBullet(e.x, e.y + offY, Math.cos(a) * speed, Math.sin(a) * speed, col);
   }
 
   _updateUI() {

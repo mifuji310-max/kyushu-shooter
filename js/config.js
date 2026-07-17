@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.11.0';
+const VERSION = 'v0.12.0';
 
 // カラーパレット
 const C = {
@@ -122,8 +122,31 @@ const STAGE_WAVES = [
     { type: 'jintaiko', count: 4, interval: 1800, startAt: 3600 } ],
 ];
 
-// 各ボス(①②③④)のHP係数（難易度のbossHPに乗算・段階的に強化）
-const BOSS_HP_FACTORS = [1.2, 1.6, 2.0, 2.6];
+// 各ボス(①②③④)のHP係数（難易度のbossHPに乗算）。④は③より柔らかい(凝縮=手数勝負)。
+const BOSS_HP_FACTORS = [1.2, 1.7, 2.3, 1.9];
+
+// ボス4段階のサイズ・動き・攻撃の個性（画像は同寸だが、両目間隔を基準に
+// 「実サイズは成長→凝縮」に見えるよう表示倍率を調整。当たり判定も表示に連動）。
+// display=表示px / y=待機Y / hitW,hitH=当たり判定の表示比 / bulletColor=弾色(白オーブをtint)
+// move: 'sine'(横往復) | 'erratic'(ランダムワープ) / freq,amp=正弦運動 / bob=上下ゆれ
+// pattern: 'aim'(狙い扇) | 'fan8aim' | 'fan12aim3' | 'spiral' / fireball,charge=有無
+const BOSS_PHASES = [
+  { display: 150, y: 150, hitW: 0.60, hitH: 0.55, bulletColor: 0xff4060,
+    move: 'sine', freq: 0.7, amp: 100, shootInterval: 2000,
+    pattern: 'aim', fireball: false, charge: false },                    // ① シンプル・単調
+  { display: 240, y: 165, hitW: 0.52, hitH: 0.50, bulletColor: 0xb45cff,
+    move: 'sine', freq: 0.5, amp: 72, shootInterval: 1950,
+    pattern: 'fan8aim', fireball: true, charge: false },                 // ② 重いが硬い・単調
+  { display: 285, y: 172, hitW: 0.44, hitH: 0.46, bulletColor: 0xff8a3d,
+    move: 'sine', freq: 1.0, amp: 130, bob: true, shootInterval: 1250,
+    pattern: 'fan12aim3', fireball: true, charge: true },                // ③ 重くて硬い・攻撃増
+  { display: 200, y: 158, hitW: 0.50, hitH: 0.52, bulletColor: 0x40e0ff,
+    move: 'erratic', dashEvery: 1300, shootInterval: 1050,
+    pattern: 'spiral', fireball: true, charge: false },                  // ④ 柔いが変則的
+];
+
+// 通常敵の弾色（赤の偏りを解消。未指定は赤）
+const ENEMY_BULLET_COLOR = { kyoryu: 0x66ff66, jintaiko: 0xffb02e };
 
 // ステージ定義（将来の九州各県拡張はここに要素を足すだけにする）
 const STAGES = [
