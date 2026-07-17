@@ -51,7 +51,7 @@ function mkButton(scene, x, y, label, opts) {
   return cont;
 }
 
-const VERSION = 'v0.12.0';
+const VERSION = 'v0.13.0';
 
 // カラーパレット
 const C = {
@@ -123,30 +123,49 @@ const STAGE_WAVES = [
 ];
 
 // 各ボス(①②③④)のHP係数（難易度のbossHPに乗算）。④は③より柔らかい(凝縮=手数勝負)。
-const BOSS_HP_FACTORS = [1.2, 1.7, 2.3, 1.9];
+// v0.13.0: 自機の火力向上に合わせ後半をやや増やしペースを合わせる（④<③は維持）。
+const BOSS_HP_FACTORS = [1.3, 1.9, 2.7, 2.3];
 
 // ボス4段階のサイズ・動き・攻撃の個性（画像は同寸だが、両目間隔を基準に
 // 「実サイズは成長→凝縮」に見えるよう表示倍率を調整。当たり判定も表示に連動）。
 // display=表示px / y=待機Y / hitW,hitH=当たり判定の表示比 / bulletColor=弾色(白オーブをtint)
 // move: 'sine'(横往復) | 'erratic'(ランダムワープ) / freq,amp=正弦運動 / bob=上下ゆれ
 // pattern: 'aim'(狙い扇) | 'fan8aim' | 'fan12aim3' | 'spiral' / fireball,charge=有無
+// display は v0.13.0 で全体的に約0.9倍に縮小
 const BOSS_PHASES = [
-  { display: 150, y: 150, hitW: 0.60, hitH: 0.55, bulletColor: 0xff4060,
+  { display: 135, y: 150, hitW: 0.60, hitH: 0.55, bulletColor: 0xff4060,
     move: 'sine', freq: 0.7, amp: 100, shootInterval: 2000,
     pattern: 'aim', fireball: false, charge: false },                    // ① シンプル・単調
-  { display: 240, y: 165, hitW: 0.52, hitH: 0.50, bulletColor: 0xb45cff,
+  { display: 216, y: 165, hitW: 0.52, hitH: 0.50, bulletColor: 0xb45cff,
     move: 'sine', freq: 0.5, amp: 72, shootInterval: 1950,
     pattern: 'fan8aim', fireball: true, charge: false },                 // ② 重いが硬い・単調
-  { display: 285, y: 172, hitW: 0.44, hitH: 0.46, bulletColor: 0xff8a3d,
+  { display: 256, y: 172, hitW: 0.44, hitH: 0.46, bulletColor: 0xff8a3d,
     move: 'sine', freq: 1.0, amp: 130, bob: true, shootInterval: 1250,
     pattern: 'fan12aim3', fireball: true, charge: true },                // ③ 重くて硬い・攻撃増
-  { display: 200, y: 158, hitW: 0.50, hitH: 0.52, bulletColor: 0x40e0ff,
-    move: 'erratic', dashEvery: 1300, shootInterval: 1050,
-    pattern: 'spiral', fireball: true, charge: false },                  // ④ 柔いが変則的
+  { display: 180, y: 158, hitW: 0.50, hitH: 0.52, bulletColor: 0x40e0ff,
+    move: 'erratic', dashEvery: 1150, shootInterval: 780,
+    pattern: 'spiral', spiralRays: 5, fireball: true, charge: false },   // ④ 柔いが変則的(手数UP)
 ];
 
 // 通常敵の弾色（赤の偏りを解消。未指定は赤）
 const ENEMY_BULLET_COLOR = { kyoryu: 0x66ff66, jintaiko: 0xffb02e };
+
+// 自機ショットの再設計（直交3軸＋乗算）。v0.13.0
+// 団子=連射速度 / 拡散=奇数way(正面キープ) / 大玉=サイズ威力貫通(乗算) / ほっぺ=ハート化(乗算)
+const SHOT = {
+  baseInterval: 210,      // 団子Lv1の発射間隔ms
+  ratePerLv: 26,          // 団子Lvごとに短縮するms
+  bigIntervalAdd: 14,     // 大玉Lvごとに間隔を少し増やす（重い分）
+  minInterval: 70,
+  speed: 620,
+  spreadWays: [1, 3, 5, 7],   // 拡散Lv0-3 → way数（奇数＝正面キープ）
+  spreadHalfPerWay: 0.15,     // 扇の片側角＝(way-1)*これ
+  bigScalePerLv: 0.34,        // 大玉Lvごとの拡大
+  // 総合Lvで弾色が進化（シアン→青→紫→金）
+  lvColorStops: [[0, 0x66eaff], [3, 0x4a86ff], [6, 0xb45cff], [9, 0xffd24a]],
+  trailTotalLv: 9,            // この総合Lv以上で弾に尾（トレイル）
+  powerMax: 5, spreadMax: 3, bigMax: 3,
+};
 
 // ステージ定義（将来の九州各県拡張はここに要素を足すだけにする）
 const STAGES = [

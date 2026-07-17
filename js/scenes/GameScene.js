@@ -113,6 +113,7 @@ class GameScene extends Phaser.Scene {
   _makeTextures() {
     this._texPlayer();
     this._texBullet();
+    this._texPlayerShot();
     this._texEnemyBullet();
     this._texFireball();
     this._texBeamColumn();
@@ -144,11 +145,14 @@ class GameScene extends Phaser.Scene {
   _texItemIcons() {
     const outline = (g, w) => g.lineStyle(w, 0x000000, 1);
 
-    // いきなり団子: 紫の芋の皮＋白い餅、黄色い星バッジ
+    // 団子＝連射(本数): 縦に3連の弾（速射のイメージ）＋上向き矢
     this._gTex('item_power', 32, 32, g => {
-      outline(g, 3).fillStyle(0x7b3fa0).fillRoundedRect(5, 4, 22, 24, 10).strokeRoundedRect(5, 4, 22, 24, 10);
-      outline(g, 2.5).fillStyle(0xfff3d6).fillRoundedRect(8, 15, 16, 12, 6).strokeRoundedRect(8, 15, 16, 12, 6);
-      outline(g, 1.5).fillStyle(0xffd400).fillCircle(24, 8, 5).strokeCircle(24, 8, 5);
+      outline(g, 2.5).fillStyle(0xffcc00);
+      [6, 15, 24].forEach(y => { g.fillCircle(16, y, 4).strokeCircle(16, y, 4); });
+      g.fillStyle(0xfff3b0).fillCircle(14.5, 4.5, 1.4);
+      // 上向き矢羽（連射＝上へ飛ぶ）
+      g.lineStyle(2.5, 0x000000, 1);
+      g.beginPath(); g.moveTo(10, 10); g.lineTo(16, 3); g.lineTo(22, 10); g.strokePath();
     });
 
     // 天然水: 水色のしずく＋白い十字
@@ -167,25 +171,25 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(0xffffff).fillRoundedRect(7, 19, 18, 6, 2);
     });
 
-    // 拡散ショット: オレンジの扇形3枚
+    // 拡散＝広がり(奇数way): 中央＋左右に開く3本の矢（正面キープを示す）
     this._gTex('item_spread', 32, 32, g => {
-      const cx = 16, cy = 29;
-      [[-0.9, -0.35], [-0.2, 0.2], [0.5, 1.1]].forEach(([a0, a1]) => {
-        const base = -Math.PI / 2;
-        const p1 = { x: cx + Math.cos(base + a0) * 24, y: cy + Math.sin(base + a0) * 24 };
-        const p2 = { x: cx + Math.cos(base + a1) * 24, y: cy + Math.sin(base + a1) * 24 };
-        outline(g, 2.5).fillStyle(0xff9800)
-          .fillTriangle(cx, cy, p1.x, p1.y, p2.x, p2.y)
-          .strokeTriangle(cx, cy, p1.x, p1.y, p2.x, p2.y);
+      const cx = 16, cy = 28;
+      g.lineStyle(3, 0xff9800, 1);
+      [-0.6, 0, 0.6].forEach(a => {
+        const base = -Math.PI / 2 + a;
+        const ex = cx + Math.cos(base) * 22, ey = cy + Math.sin(base) * 22;
+        g.beginPath(); g.moveTo(cx, cy); g.lineTo(ex, ey); g.strokePath();
+        // 矢先
+        g.fillStyle(0xff9800).fillCircle(ex, ey, 3);
       });
-      g.fillStyle(0xffd54f).fillCircle(cx, cy, 4);
+      g.fillStyle(0xffd54f).fillCircle(cx, cy, 3.5);
     });
 
-    // 大玉ショット: ピンクの同心円
+    // 大玉＝弾の格(サイズ乗算): 大きな発光オーブ
     this._gTex('item_big', 32, 32, g => {
-      outline(g, 3).fillStyle(0xffb3cf).fillCircle(16, 16, 13).strokeCircle(16, 16, 13);
-      outline(g, 2).fillStyle(0xff4d94).fillCircle(16, 16, 7).strokeCircle(16, 16, 7);
-      g.fillStyle(0xffffff).fillCircle(13, 13, 2);
+      outline(g, 3).fillStyle(0xff80c0).fillCircle(16, 16, 13).strokeCircle(16, 16, 13);
+      g.fillStyle(0xffd0ea).fillCircle(16, 16, 8);
+      g.fillStyle(0xffffff).fillCircle(12.5, 12.5, 3);
     });
 
     // バリア: 水色の六角形の盾＋白い星
@@ -297,6 +301,28 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(0x00e5ff, 0.30).fillRoundedRect(1, 1, 8, 22, 4); // 外グロー
       g.fillStyle(0x4df3ff, 0.9).fillRoundedRect(3, 2, 4, 20, 2);  // 本体
       g.fillStyle(0xffffff, 1).fillRoundedRect(4, 3, 2, 14, 1);    // 白い芯
+    });
+  }
+
+  // 自機ショットの共通テクスチャ（すべて白＝setTintで総合Lvの色に。サイズはsetScale、
+  // 形はorb/heartで切替。尾は最大強化時のcomet）。「大きさ・形・色」でLvを表現。
+  _texPlayerShot() {
+    this._gTex('p_orb', 16, 16, g => {
+      g.fillStyle(0xffffff, 0.30).fillCircle(8, 8, 8);
+      g.fillStyle(0xffffff, 0.95).fillCircle(8, 8, 5);
+      g.fillStyle(0xffffff, 1).fillCircle(6.4, 6.4, 2);
+    });
+    this._gTex('p_heart', 18, 18, g => {
+      g.fillStyle(0xffffff, 0.30);
+      g.fillCircle(6, 6.5, 5); g.fillCircle(12, 6.5, 5); g.fillTriangle(1.4, 8.6, 16.6, 8.6, 9, 17);
+      g.fillStyle(0xffffff, 1);
+      g.fillCircle(6.2, 6.5, 3.4); g.fillCircle(11.8, 6.5, 3.4); g.fillTriangle(3.2, 8.6, 14.8, 8.6, 9, 15.4);
+    });
+    // 尾つき彗星（縦長・上に尾を引く）。最大強化時の弾に使う
+    this._gTex('p_comet', 18, 34, g => {
+      g.fillStyle(0xffffff, 0.22).fillTriangle(9, 0, 3, 30, 15, 30); // 淡い尾
+      g.fillStyle(0xffffff, 0.55).fillTriangle(9, 6, 5.5, 28, 12.5, 28);
+      g.fillStyle(0xffffff, 1).fillCircle(9, 27, 5);                 // 先頭の芯
     });
   }
 
@@ -1151,14 +1177,22 @@ class GameScene extends Phaser.Scene {
       case 'fan8aim':   fanDown(8, 180); aim(0, 1, 260); break;
       case 'fan12aim3': fanDown(12, 200); aim(0.3, 3, 260); break;
       case 'spiral': {
-        // 下向きの扇を左右にスイープ＋高速狙い弾（変則的で読みにくい）
+        // 下向きの扇を左右にスイープ＋高速狙い弾（変則的で読みにくい）。手数UP。
         b.spiralPhase = (b.spiralPhase || 0) + 1;
+        const rays = cfg.spiralRays || 3;
         const center = Math.PI / 2 + Math.sin(b.spiralPhase * 0.5) * Math.PI * 0.42;
-        for (const d of [-0.28, 0, 0.28]) {
-          const a = Phaser.Math.Clamp(center + d, Math.PI * 0.06, Math.PI * 0.94); // 下向き限定
-          this._spawnEnemyBullet(bx, by, Math.cos(a) * 210, Math.sin(a) * 210, col);
+        for (let i = 0; i < rays; i++) {
+          const off = (i - (rays - 1) / 2) * 0.26;
+          const a = Phaser.Math.Clamp(center + off, Math.PI * 0.05, Math.PI * 0.95);
+          this._spawnEnemyBullet(bx, by, Math.cos(a) * 215, Math.sin(a) * 215, col);
         }
-        aim(0, 1, 330); // 速い狙い弾
+        // 逆回転の薄い扇を重ねて弾幕感を出す
+        const center2 = Math.PI / 2 - Math.sin(b.spiralPhase * 0.5) * Math.PI * 0.30;
+        for (const d of [-0.18, 0.18]) {
+          const a = Phaser.Math.Clamp(center2 + d, Math.PI * 0.05, Math.PI * 0.95);
+          this._spawnEnemyBullet(bx, by, Math.cos(a) * 180, Math.sin(a) * 180, 0xffffff);
+        }
+        aim(0.12, 2, 340); // 速い狙い2発
         break;
       }
     }
@@ -1334,54 +1368,55 @@ class GameScene extends Phaser.Scene {
 
     if (!this._isFiring()) return;
 
-    this._nextFireAt = now + (110 + this.bigLv * 45); // 大玉ほど連射は遅い
+    // 団子=連射速度、大玉ほど少し重い
+    this._nextFireAt = now + Math.max(SHOT.minInterval,
+      SHOT.baseInterval - this.powerLevel * SHOT.ratePerLv + this.bigLv * SHOT.bigIntervalAdd);
     SFX.shoot();
 
     const cx = this.player.x;
     const cy = this.player.y - 30;
-    // 本数 = 1 + 拡散Lv + (パワーLv-1)。最大9way。
-    const ways = Math.min(9, 1 + this.spreadLv + Math.max(0, this.powerLevel - 1));
-
-    if (this.spreadLv > 0) {
-      // 扇状に広げる（大玉なら大玉が扇状に飛ぶ＝かけ合わせ）
-      const half = Math.min(1.0, 0.14 * (ways - 1));
-      const spd = 580;
-      for (let i = 0; i < ways; i++) {
-        const t = ways === 1 ? 0 : (i / (ways - 1) - 0.5) * 2; // -1〜1
-        const ang = -Math.PI / 2 + t * half;
-        this._fireBullet(cx, cy, Math.cos(ang) * spd, Math.sin(ang) * spd);
-      }
-    } else {
-      // 拡散無し: ほぼ平行に本数を増やす
-      for (let i = 0; i < ways; i++) {
-        const t = ways === 1 ? 0 : (i / (ways - 1) - 0.5) * 2; // -1〜1
-        this._fireBullet(cx + t * 16, cy, t * 18, -620);
-      }
+    // 拡散=奇数way(1/3/5/7)。正面(t=0)が必ず含まれる。扇の広がりはway数に比例。
+    const ways = SHOT.spreadWays[this.spreadLv];
+    const half = (ways - 1) * SHOT.spreadHalfPerWay;
+    const up = -Math.PI / 2;
+    const col = this._shotColor();
+    const trail = this._shotTotalLv() >= SHOT.trailTotalLv;
+    for (let i = 0; i < ways; i++) {
+      const t = ways === 1 ? 0 : (i / (ways - 1) - 0.5) * 2; // -1〜1
+      const ang = up + t * half;
+      this._fireBullet(cx, cy, Math.cos(ang) * SHOT.speed, Math.sin(ang) * SHOT.speed, col, trail);
     }
   }
 
-  // 1発生成。大玉Lvでサイズ・威力・貫通が上がる。ほっぺLvがあれば命中時に破裂。
-  _fireBullet(x, y, vx, vy) {
-    const lv = this.bigLv;
-    let b;
-    if (lv > 0) {
-      b = this.playerBullets.create(x, y, 'bullet_big');
-      b.setDepth(6).setVelocity(vx, vy);
-      b.setScale(0.7 + lv * 0.22);
-      b.body.setSize(b.width * 0.62, b.height * 0.62);
-      b.body.setOffset(b.width * 0.19, b.height * 0.19); // 見た目の中心に判定を合わせる
-      b.damage = 1 + lv;      // 2 / 3 / 4
-      b.pierceLeft = lv;      // 1 / 2 / 3 体貫通
-    } else {
-      // ほっぺLvがあれば弾の見た目もハートに
-      b = this.playerBullets.create(x, y, this.heartLv > 0 ? 'bullet_heart' : 'bullet');
-      b.setDepth(6).setVelocity(vx, vy);
-      b.body.setSize(b.width * 0.5, b.height * 0.8);
-      b.body.setOffset(b.width * 0.25, b.height * 0.1); // 見た目の中心に判定を合わせる
-      b.damage = 1;
-      b.pierceLeft = 0;
-    }
-    if (this.heartLv > 0) b.heartBurst = this.heartLv; // 命中時に破裂して拡散
+  // 総合Lv（色・尾の判定に使う）
+  _shotTotalLv() {
+    return (this.powerLevel - 1) + this.spreadLv + this.bigLv + this.heartLv;
+  }
+  // 総合Lvに応じた弾色（シアン→青→紫→金）
+  _shotColor() {
+    const t = this._shotTotalLv();
+    let c = SHOT.lvColorStops[0][1];
+    for (const [th, col] of SHOT.lvColorStops) if (t >= th) c = col;
+    return c;
+  }
+
+  // 1発生成（直交3軸＋乗算）: 大玉=サイズ/威力/貫通、ほっぺ=ハート形+破裂、
+  // 色=総合Lv、尾=最大強化。すべて白テクスチャをtint/scaleして合成する。
+  _fireBullet(x, y, vx, vy, color, trail) {
+    const scale = 1 + this.bigLv * SHOT.bigScalePerLv;
+    // ほっぺ有りはハート形を維持（尾は光彩で表現）。無しは最大強化で彗星型の尾。
+    const heart = this.heartLv > 0;
+    const tex = heart ? 'p_heart' : (trail ? 'p_comet' : 'p_orb');
+    const b = this.playerBullets.create(x, y, tex);
+    b.setDepth(6).setVelocity(vx, vy).setTint(color).setScale(scale);
+    if (trail) b.setBlendMode(Phaser.BlendModes.ADD); // 尾＝発光
+    const isComet = tex === 'p_comet';
+    const hw = b.width * 0.5, hh = b.height * (isComet ? 0.32 : 0.5);
+    b.body.setSize(hw, hh);
+    b.body.setOffset((b.width - hw) / 2, isComet ? b.height * 0.6 : (b.height - hh) / 2);
+    b.damage = 1 + this.bigLv;   // 大玉で威力↑
+    b.pierceLeft = this.bigLv;   // 大玉で貫通↑
+    if (heart) b.heartBurst = this.heartLv; // ほっぺで命中時に破裂（大玉サイズも継承）
   }
 
   // 擬似3D: 画面上(遠く)ほど小さく描画する。Arcade物理のボディはスプライトの
@@ -1457,9 +1492,9 @@ class GameScene extends Phaser.Scene {
       hpRatio > 0.5 ? C.HP_GREEN : hpRatio > 0.25 ? C.HP_YELLOW : C.HP_RED
     );
 
-    // パワー/拡散/大玉/ほっぺ/バリアを合成表示
-    let pt = 'P' + this.powerLevel;
-    if (this.spreadLv > 0) pt += ' 拡' + this.spreadLv;
+    // 連射/拡散way/大玉/ほっぺ/バリアを合成表示
+    let pt = '連' + this.powerLevel;
+    if (this.spreadLv > 0) pt += ' 拡' + SHOT.spreadWays[this.spreadLv];
     if (this.bigLv > 0) pt += ' 玉' + this.bigLv;
     if (this.heartLv > 0) pt += ' ♥' + this.heartLv;
     if (this.shieldHits > 0) pt += ' 🛡' + this.shieldHits;
@@ -1589,24 +1624,28 @@ class GameScene extends Phaser.Scene {
     };
     switch (item.itemType) {
       case 'item_power':
-        if (this.powerLevel >= 5) { maxed(); break; }
+        if (this.powerLevel >= SHOT.powerMax) { maxed(); break; }
         this.powerLevel++;
-        this._showPickupMsg('パワー Lv.' + this.powerLevel, '#ffcc00');
+        this._showPickupMsg('連射 Lv.' + this.powerLevel, '#ffcc00');
+        this._powerUpFx();
         break;
       case 'item_spread':
-        if (this.spreadLv >= 4) { maxed(); break; }
+        if (this.spreadLv >= SHOT.spreadMax) { maxed(); break; }
         this.spreadLv++;
-        this._showPickupMsg('拡散 Lv.' + this.spreadLv, '#ff9800');
+        this._showPickupMsg('拡散 ' + SHOT.spreadWays[this.spreadLv] + 'way', '#ff9800');
+        this._powerUpFx();
         break;
       case 'item_big':
-        if (this.bigLv >= 3) { maxed(); break; }
+        if (this.bigLv >= SHOT.bigMax) { maxed(); break; }
         this.bigLv++;
         this._showPickupMsg('大玉 Lv.' + this.bigLv, '#ff80ab');
+        this._powerUpFx();
         break;
       case 'item_cheek':
         if (this.heartLv >= BALANCE.heartMaxLv) { maxed(); break; }
         this.heartLv++;
-        this._showPickupMsg('ほっぺ♥ Lv.' + this.heartLv + ' 弾が破裂!', '#ff6b9d');
+        this._showPickupMsg('ほっぺ♥ Lv.' + this.heartLv + ' 弾がハート破裂!', '#ff6b9d');
+        this._powerUpFx();
         break;
       case 'item_barrier':
         this.shieldHits = 3;
@@ -1640,6 +1679,17 @@ class GameScene extends Phaser.Scene {
         .setDepth(11).setVisible(false);
     }
     this._shieldSprite.setVisible(on);
+  }
+
+  // 強化取得時のエフェクト: 自機の脈動＋広がる光リング（現在の弾色で）。SFXは呼び出し側の後段
+  _powerUpFx() {
+    const col = this._shotColor();
+    const ring = this.add.circle(this.player.x, this.player.y, 14, col, 0)
+      .setStrokeStyle(3, col, 0.9).setDepth(12);
+    this.tweens.add({ targets: ring, radius: 46, alpha: 0, duration: 380,
+      onComplete: () => ring.destroy() });
+    this.tweens.add({ targets: this.player, scaleX: this.player.scaleX * 1.28,
+      scaleY: this.player.scaleY * 1.28, duration: 110, yoyo: true });
   }
 
   // ─── DAMAGE / SCORE / EFFECTS ──────────────────────────
